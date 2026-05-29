@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Command Center</title>
+  
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  
+  <meta name="theme-color" content="#8b0000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Command Center">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+  <div id="auth-screen" class="auth-overlay show">
+    <div class="auth-container">
+      <div class="auth-header">
+        <i class="fa-solid fa-user-astronaut" style="font-size:3rem;color:var(--maroon);margin-bottom:10px;"></i>
+        <h2>Welcome Back</h2>
+        <button id="install-app-btn" class="submit-btn" style="display: none; margin-top: 15px; background: #27ae60;">
+          <i class="fa-solid fa-download"></i> Install Native App
+        </button>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+        <button class="auth-tab" onclick="switchAuthTab('signup')">Sign Up</button>
+      </div>
+      <div id="login-form" class="auth-form active">
+        <div class="input-group"><label>Email</label><input type="email" id="login-email" placeholder="user@example.com" onkeydown="if(event.key==='Enter')handleLogin()"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleLogin()"></div>
+        <button class="submit-btn" onclick="handleLogin()">Login</button>
+        <p class="auth-link" onclick="showForgotPassword()">Forgot Password?</p>
+      </div>
+      <div id="signup-form" class="auth-form">
+        <div class="input-group"><label>Email</label><input type="email" id="signup-email" placeholder="user@example.com"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="signup-password" placeholder="••••••••"></div>
+        <div class="input-group"><label>Security Question</label>
+          <select id="signup-question">
+            <option value="Who's the person you love the most?">Who's the person you love the most?</option>
+            <option value="What do you fear the most?">What do you fear the most?</option>
+            <option value="Are you gay?">Are you gay?</option>
+          </select>
+        </div>
+        <div class="input-group"><label>Answer</label><input type="text" id="signup-answer" placeholder="Your secret answer"></div>
+        <button class="submit-btn" onclick="handleSignup()">Create Account</button>
+      </div>
+      <div id="forgot-form" class="auth-form">
+        <div class="input-group"><label>Enter your Email</label><input type="email" id="forgot-email" placeholder="user@example.com"></div>
+        <button class="submit-btn" onclick="fetchSecurityQuestion()">Get Security Question</button>
+        <div id="recover-section" style="display:none;margin-top:15px;">
+          <p id="recovered-question" style="font-weight:bold;margin-bottom:10px;"></p>
+          <div class="input-group"><input type="text" id="forgot-answer" placeholder="Your Answer"></div>
+          <button class="submit-btn" onclick="recoverPassword()">Reveal Password</button>
+          <p id="revealed-password" style="margin-top:10px;color:var(--maroon);font-weight:bold;"></p>
+        </div>
+        <p class="auth-link" style="margin-top:15px;" onclick="switchAuthTab('login')">Back to Login</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-container" id="main-dashboard" style="display:none;">
+    <nav class="sidebar">
+      <div class="profile-section">
+        <div class="avatar"><i class="fa-solid fa-user-astronaut"></i></div>
+        <h2>Command Center</h2>
+      </div>
+      <ul class="nav-links">
+        <li class="active" onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
+        <li onclick="switchTab('academic',this)"><i class="fa-solid fa-graduation-cap"></i> Academic Planner</li>
+        <li onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
+        <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> Media Tracker</li>
+        <li onclick="switchTab('shopping',this)"><i class="fa-solid fa-cart-shopping"></i> Shopping List</li>
+      </ul>
+      <div class="github-link" style="margin-top:auto;">
+        <button class="add-btn" style="width:100%;justify-content:center;background:#333;" onclick="handleLogout()">
+          <i class="fa-solid fa-right-from-bracket"></i> Log Out
+        </button>
+      </div>
+    </nav>
+
+    <main class="content-area">
+      <div class="top-bar">
+        <div class="search-container">
+          <i class="fa-solid fa-search"></i>
+          <input type="text" id="global-search" onkeyup="filterItems()" placeholder="Search active tab...">
+        </div>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode"><i class="fa-solid fa-moon"></i></button>
+      </div>
+
+      <section id="vault" class="tab-content active-tab fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Secure Vault</h1>
+          <button class="add-btn" onclick="toggleModal('add-vault-modal',true)"><i class="fa-solid fa-plus"></i> Add Item</button>
+        </div>
+        <div class="vault-container">
+          <div class="vault-grid" id="vault-data"></div>
+          <div class="locked-state glass-overlay" id="vault-lock">
+            <i class="fa-solid fa-lock lock-icon"></i>
+            <h3>Vault Locked</h3><p>Enter PIN or use biometrics</p>
+            <div class="pin-container">
+              <input type="password" id="vault-pin" maxlength="4" placeholder="••••" autocomplete="off" inputmode="numeric">
+              <button onclick="verifyPin()" class="unlock-btn">Unlock</button>
+            </div>
+            <p style="color:var(--maroon);cursor:pointer;font-size:0.9rem;font-weight:bold;margin-top:15px;" onclick="toggleModal('reset-pin-modal',true)">Forgot PIN?</p>
+            <div class="divider"><span>OR</span></div>
+            <div class="biometric-option" onclick="unlockVault()">
+              <i class="fa-solid fa-fingerprint fingerprint-icon"></i><p>Tap Fingerprint</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="academic" class="tab-content fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Academic Planner</h1>
+          <button class="add-btn" onclick="toggleModal('add-academic-modal',true)"><i class="fa-solid fa-plus"></i> Add Event</button>
+        </div>
+        <div class="movie-tabs" style="margin-bottom:20px;">
+          <button class="m-tab active" onclick="filterAcademic('All',this)">All</button>
+          <button class="m-tab" onclick="filterAcademic('Quiz',this)">Quizzes</button>
+          <button class="m-tab" onclick="filterAcademic('Assignment',this)">Assignments</button>
+          <button class="m-tab" onclick="filterAcademic('Lab Test',this)">Lab Tests</button>
+        </div>
+        <div class="academic-grid" id="academic-list"></div>
+      </section>
+
+      <section id="credentials" class="tab-content fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Platform Credentials</h1>
+          <button class="add-btn" onclick="toggleModal('add-cred-modal',true)"><i class="fa-solid fa-plus"></i> Add New</button>
+        </div>
+        <div class="cred-grid" id="cred-data"></div>
+      </section>
+
+      <section id="movies" class="tab-content fade-in">
+        <div class="movie-top-controls">
+          <div class="movie-tabs" id="movie-status-tabs">
+            <button class="m-tab active" onclick="switchMovieTab('watched',this)">Watched</button>
+            <button class="m-tab" onclick="switchMovieTab('plan-to-watch',this)">Plan to Watch</button>
+          </div>
+          <div class="add-movie-bar">
+            <input type="text" id="movie-search-input" placeholder="Search title or paste IMDb link...">
+            <button class="add-btn" onclick="addNewMovie()"><i class="fa-solid fa-plus"></i> Add</button>
+          </div>
+        </div>
+        <div class="movie-tabs" style="margin-bottom:15px;">
+          <span style="margin-right:10px;font-weight:bold;color:var(--text-gray);">Filter:</span>
+          <button class="m-tab active" onclick="filterMedia('All',this)">All</button>
+          <button class="m-tab" onclick="filterMedia('movie',this)">Movies</button>
+          <button class="m-tab" onclick="filterMedia('series',this)">Series</button>
+        </div>
+        <div id="watched-list" class="movie-grid"></div>
+        <div id="plan-to-watch-list" class="movie-grid" style="display:none;"></div>
+      </section>
+
+      <section id="shopping" class="tab-content fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Shopping List</h1>
+          <button class="add-btn" onclick="toggleModal('add-shopping-modal',true)"><i class="fa-solid fa-plus"></i> Add Item</button>
+        </div>
+        <div class="movie-tabs" style="margin-bottom:20px;">
+          <button class="m-tab active" onclick="filterShopping('all',this)">All</button>
+          <button class="m-tab" onclick="filterShopping('pending',this)"><i class="fa-regular fa-clock"></i> Pending</button>
+          <button class="m-tab" onclick="filterShopping('bought',this)"><i class="fa-solid fa-check"></i> Bought</button>
+        </div>
+        <div class="shopping-list" id="shopping-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="add-academic-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Add Academic Event</h2><button class="close-modal-btn" onclick="toggleModal('add-academic-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Event Category</label><select id="academicType"><option value="Quiz">Quiz</option><option value="Assignment">Assignment</option><option value="Lab Test">Lab Test</option></select></div>
+        <div class="input-group"><label>Course / Topic Name</label><input type="text" id="academicTitle" placeholder="e.g. CSE330 Midterm"></div>
+        <div class="input-group"><label>Date</label><input type="date" id="academicDate"></div>
+        <button class="submit-btn" onclick="saveAcademicEvent()">Save Event</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="add-vault-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Add to Secure Vault</h2><button class="close-modal-btn" onclick="toggleModal('add-vault-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Document Category</label><select id="vaultType"><option value="Bank Account">Bank Account</option><option value="NID (Self)">NID (Self)</option><option value="NID (Father)">NID (Father)</option><option value="NID (Mother)">NID (Mother)</option><option value="Passport">Passport</option><option value="Student ID">Student ID</option></select></div>
+        <div class="input-group"><label>Title / Details</label><input type="text" id="vaultTitle" placeholder="e.g. DBBL Savings Account"></div>
+        <div class="input-group"><label>Masked Number</label><input type="text" id="vaultNumber" placeholder="e.g. ••• ••• 789"></div>
+        <div class="input-group"><label>Logo / Front Scan</label><input type="file" id="vaultFrontImage" accept="image/*" capture="environment" style="padding:8px 0;"></div>
+        <div class="input-group"><label>Back Scan (Optional)</label><input type="file" id="vaultBackImage" accept="image/*" capture="environment" style="padding:8px 0;"></div>
+        <button class="submit-btn" onclick="saveNewVaultItem()">Secure in Vault</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="add-cred-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Add Credential</h2><button class="close-modal-btn" onclick="toggleModal('add-cred-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Platform Name</label><input type="text" id="platformName" placeholder="e.g. LinkedIn"></div>
+        <div class="input-group">
+          <label>Profile Link (Optional — logo auto-fetched)</label>
+          <input type="text" id="platformLink" placeholder="https://linkedin.com/in/you" oninput="previewCredLogo(this.value)">
+          <img id="cred-logo-preview" src="" alt="" style="display:none;width:40px;height:40px;object-fit:contain;margin-top:8px;border-radius:6px;border:1px solid var(--border-color);padding:3px;background:#fff;">
+        </div>
+        <div class="input-group"><label>Username / Email</label><input type="text" id="username" placeholder="user@example.com"></div>
+        <div class="input-group"><label>Password (Optional)</label><input type="password" id="password" placeholder="••••••••"></div>
+        <div class="input-group"><label>Platform Logo (Optional — overrides auto)</label><input type="file" id="platformImage" accept="image/*" style="padding:8px 0;"></div>
+        <button class="submit-btn" onclick="saveNewCredential()">Save Securely</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rate-movie-modal" class="modal-overlay">
+    <div class="modal-content" style="width:350px;">
+      <div class="modal-header"><h2>Rate Media</h2><button class="close-modal-btn" onclick="toggleModal('rate-movie-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Your Rating (0 - 10)</label><input type="number" id="new-rating-input" min="0" max="10" step="0.1"></div>
+        <button class="submit-btn" onclick="submitRating()">Save Rating</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="document-modal" class="modal-overlay">
+    <div class="modal-content document-modal-content">
+      <button class="close-modal-btn" onclick="closeDocumentModal()"><i class="fa-solid fa-xmark"></i></button>
+      <div class="doc-modal-header"><h2 id="doc-title">Document Title</h2><p class="doc-number" id="doc-number">•••• ••••</p></div>
+      <div class="doc-modal-body">
+        <div class="doc-scan-container"><h4>Front / Logo</h4>
+          <div class="doc-image-placeholder">
+            <img id="doc-front-image" src="" alt="Front Scan" style="width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;">
+            <div id="front-placeholder-icon"><i class="fa-regular fa-image"></i><span>No Scan</span></div>
+          </div>
+        </div>
+        <div class="doc-scan-container" id="doc-back-side"><h4>Back Side</h4>
+          <div class="doc-image-placeholder">
+            <img id="doc-back-image" src="" alt="Back Scan" style="width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;">
+            <div id="back-placeholder-icon"><i class="fa-regular fa-image"></i><span>No Scan</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="movie-modal" class="modal-overlay">
+    <div class="modal-content movie-modal-content">
+      <button class="close-modal-btn" onclick="closeMovieModal()"><i class="fa-solid fa-xmark"></i></button>
+      <div class="movie-modal-body">
+        <img id="modal-poster" src="" alt="Movie Poster">
+        <div class="movie-modal-details">
+          <div class="modal-header-row"><h2 id="modal-title">Movie Title</h2><span class="modal-rating" id="modal-rating"><i class="fa-solid fa-star"></i> 0.0</span></div>
+          <div class="modal-meta"><span id="modal-duration"><i class="fa-regular fa-clock"></i> 120 min</span><span id="modal-genre"><i class="fa-solid fa-film"></i> Genre</span></div>
+          <div class="modal-plot"><h3>Plot Summary</h3><p id="modal-plot-text">Plot details go here...</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="reset-pin-modal" class="modal-overlay">
+    <div class="modal-content" style="width:350px;">
+      <div class="modal-header"><h2>Reset Vault PIN</h2><button class="close-modal-btn" onclick="toggleModal('reset-pin-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <p style="font-size:0.85rem;color:var(--text-gray);margin-bottom:1.5rem;">Enter your login password to authorize a PIN reset.</p>
+        <div class="input-group"><label>Login Password</label><input type="password" id="reset-pin-password" placeholder="••••••••"></div>
+        <div class="input-group"><label>New 4-Digit PIN</label><input type="password" id="new-vault-pin" maxlength="4" placeholder="••••" inputmode="numeric"></div>
+        <button class="submit-btn" onclick="handlePinReset()">Confirm New PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="add-shopping-modal" class="modal-overlay">
+    <div class="modal-content" style="width:420px;">
+      <div class="modal-header"><h2>Add Shopping Item</h2><button class="close-modal-btn" onclick="toggleModal('add-shopping-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Item Description</label><input type="text" id="shopping-desc" placeholder="e.g. Mechanical Keyboard"></div>
+        <div class="input-group"><label>Product Link (Optional)</label><input type="url" id="shopping-link" placeholder="https://store.com/product"></div>
+        <div class="input-group"><label>Price / Notes (Optional)</label><input type="text" id="shopping-price" placeholder="e.g. ~3,500 BDT"></div>
+        <button class="submit-btn" onclick="saveShoppingItem()">Add to List</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Action successful!</div>
+
+  <script type="module" src="script.js"></script>
+  <script>
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',()=>{
+        navigator.serviceWorker.register('./sw.js')
+          .then(r=>console.log('SW engine successfully serving scope:',r.scope))
+          .catch(e=>console.warn('SW failed loading:',e));
+      });
+    }
+  </script>
+</body>
+</html>
