@@ -1,6 +1,6 @@
-# 🚀 Command Center
+# 🚀 Personalizer
 
-Command Center is a personal, secure, installable all-in-one Progressive Web App (PWA) dashboard designed to manage academic tasks, track shopping lists, securely view sensitive documents, and log media watchlists. 
+Personalizer is a personal, secure, installable all-in-one Progressive Web App (PWA) dashboard designed to manage academic tasks, track shopping lists, securely view sensitive documents, and log media watchlists. 
 
 Engineered with a **network-first service worker architecture** and **Firestore IndexedDB persistence**, this application is built to load instantly and remain fully operational even when completely offline.
 
@@ -61,9 +61,9 @@ Here is a banger, professional, and production-ready `README.md` that is perfect
 ---
 
 ```markdown
-# 🚀 Command Center
+# 🚀 Personalizer
 
-Command Center is a personal, secure, installable all-in-one Progressive Web App (PWA) dashboard designed to manage academic tasks, track shopping lists, securely view sensitive documents, and log media watchlists. 
+Personalizer is a personal, secure, installable all-in-one Progressive Web App (PWA) dashboard designed to manage academic tasks, track shopping lists, securely view sensitive documents, and log media watchlists. 
 
 Engineered with a **network-first service worker architecture** and **Firestore IndexedDB persistence**, this application is built to load instantly and remain fully operational even when completely offline.
 
