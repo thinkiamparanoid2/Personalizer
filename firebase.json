@@ -4,10 +4,12 @@
     "ignore": [
       "firebase.json",
       "**/.*",
+      "**/.*/**",
       "**/node_modules/**",
       "agent/**",
       "extension/**",
       "central.md",
+      "README.md",
       "*.test.mjs",
       "firestore.rules"
     ]
