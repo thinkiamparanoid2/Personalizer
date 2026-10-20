@@ -405,9 +405,22 @@
 
   <div id="video-modal" class="modal-overlay">
     <div class="modal-content" style="width:min(900px,95vw);">
-      <div class="modal-header"><h2 id="video-title" style="font-size:1rem;"></h2><button class="close-modal-btn" onclick="pcCloseVideo()"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-header"><h2 id="video-title" style="font-size:1rem;"></h2>
+        <span style="display:flex;gap:6px;">
+          <button class="close-modal-btn" onclick="pcStopVideo()" title="Stop (remembers position)"><i class="fa-solid fa-stop"></i></button>
+          <button class="close-modal-btn" onclick="pcCloseVideo()" title="Minimize (keeps playing)"><i class="fa-solid fa-minus"></i></button>
+        </span>
+      </div>
       <video id="pc-video" controls playsinline style="width:100%;max-height:70vh;background:#000;border-radius:8px;"></video>
     </div>
+  </div>
+
+  <div id="mini-player" class="mini-player" style="display:none;">
+    <i class="fa-solid fa-film"></i>
+    <span id="mini-title"></span>
+    <button id="mini-toggle" onclick="pcTogglePlay()" aria-label="Play/pause"><i class="fa-solid fa-pause"></i></button>
+    <button onclick="pcShowPlayer()" aria-label="Open player"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+    <button onclick="pcStopVideo()" aria-label="Stop"><i class="fa-solid fa-stop"></i></button>
   </div>
 
   <div id="toast" class="toast">Action successful!</div>

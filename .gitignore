@@ -147,3 +147,4 @@ agent/state.json
 
 # Firebase deploy cache
 .firebase/
+agent/agent.log

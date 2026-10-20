@@ -11,7 +11,7 @@ import threading
 import time
 
 from . import config
-from .util import error_box, gemini, notify, set_clipboard_text
+from .util import error_box, gemini_generate, notify, set_clipboard_text
 
 PROMPTS = {
     "code": "Extract the source code in this image exactly, with correct indentation. "
@@ -79,11 +79,9 @@ def show_text(title, text):
 
 def analyze(img, mode):
     from google.genai import types
-    client, model = gemini()
     buf = io.BytesIO()
     img.convert("RGB").save(buf, "PNG")
-    resp = client.models.generate_content(
-        model=model, contents=[types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"), PROMPTS[mode]])
+    resp = gemini_generate([types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"), PROMPTS[mode]])
     text = (resp.text or "").strip()
     if mode != "translate":
         text = re.sub(r"^```[\w-]*\n|\n?```$", "", text).strip()

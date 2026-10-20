@@ -191,6 +191,13 @@ body {
 .pc-item .pc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-item button { padding: 0.35rem 0.6rem; min-height: 32px; }
 .pc-click { cursor: pointer; }
+.mini-player { position: fixed; right: 20px; bottom: 20px; z-index: 900; display: flex; align-items: center; gap: 8px;
+  max-width: min(420px, calc(100vw - 40px)); background: var(--white); color: var(--text-dark); border: 1px solid var(--border-color);
+  border-radius: 12px; padding: 8px 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+.mini-player i.fa-film { color: var(--maroon); }
+.mini-player span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; }
+.mini-player button { background: var(--text-dark); color: var(--bg-light); border: none; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; }
+.mini-player button:hover { background: var(--maroon); color: #fff; }
 .pc-card button.recording { background: #c62828; color: #fff; animation: pulse 1.2s infinite; }
 .pc-click:hover { background: var(--border-color); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }

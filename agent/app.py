@@ -56,8 +56,11 @@ def _resolve_file(path):
 async def lifespan(_app):
     # Background helpers; a failure in one must not stop the API.
     from . import snip, watcher
+    import threading
+    warm = lambda: threading.Thread(target=cmdbar.warm_up, daemon=True).start()  # noqa: E731
     for name, start in (("downloads watcher", watcher.start if cfg["watch_downloads"] else None),
-                        ("snip hotkey", snip.start), ("yt-dlp update", tools.maybe_update_ytdlp)):
+                        ("snip hotkey", snip.start), ("yt-dlp update", tools.maybe_update_ytdlp),
+                        ("voice model warm-up", warm)):
         if start:
             try:
                 start()
@@ -360,7 +363,8 @@ def stream_compat(request: Request, path: str, exp: int | None = None, sig: str 
             while data := proc.stdout.read(1 << 16):
                 yield data
         finally:  # client closed the player
-            proc.kill()
+            if proc.poll() is None:
+                proc.kill()
 
     return StreamingResponse(chunks(), media_type="video/mp4")
 

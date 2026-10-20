@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from . import config
-from .util import gemini, run_ffmpeg, safe_name, unique_path, ytdlp_opts
+from .util import gemini_generate, run_ffmpeg, safe_name, unique_path, ytdlp_opts
 
 VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"}
 MAX_FRAMES = 40
@@ -89,7 +89,9 @@ _whisper = {}
 _whisper_lock = threading.Lock()
 
 
-def transcribe(audio_path, job=None, model=None):
+def transcribe(audio_path, job=None, model=None, fast=False):
+    """[(start_seconds, text)]. audio_path: file path or 16 kHz float32 numpy array.
+    fast=True (short voice commands): greedy decoding, no VAD pass."""
     from faster_whisper import WhisperModel
     name = model or config.load()["whisper_model"]
 
@@ -100,7 +102,8 @@ def transcribe(audio_path, job=None, model=None):
                 if job:
                     job.progress(f"loading Whisper {name} (first use downloads it, ~1.6 GB for large)")
                 _whisper[key] = WhisperModel(name, device=device, compute_type=compute)
-        segments, info = _whisper[key].transcribe(str(audio_path), vad_filter=True, beam_size=5)
+        audio = str(audio_path) if isinstance(audio_path, (str, Path)) else audio_path
+        segments, info = _whisper[key].transcribe(audio, vad_filter=not fast, beam_size=1 if fast else 5)
         out = []
         for seg in segments:
             out.append((seg.start, seg.text.strip()))
@@ -146,12 +149,11 @@ def extract_frames(video, out_dir):
 
 # ---------- Gemini ----------
 def synthesize(title, segments, frames, link=None):
-    client, model = gemini()
     prompt = PROMPT.format(
         title=title,
         frames="\n".join(f"- {name} at [{mmss(t)}]" for t, name in frames) or "(none)",
         transcript="\n".join(paragraphs(segments)))
-    md = client.models.generate_content(model=model, contents=prompt).text or ""
+    md = gemini_generate(prompt).text or ""
     md = re.sub(r"^```(?:markdown)?\s*\n|\n```\s*$", "", md.strip())  # stray outer fence
     if link:  # [mm:ss] -> clickable link to that moment
         md = re.sub(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\](?!\()",

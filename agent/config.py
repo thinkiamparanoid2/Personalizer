@@ -47,6 +47,8 @@ def _defaults():
         "cloudflared_exe": "cloudflared",
         "gemini_api_key": "",
         "gemini_model": "gemini-3.8-flash",
+        # Tried in order when the main model is overloaded (503/504) or missing (404).
+        "gemini_fallback_models": ["gemini-3.5-flash"],
         "whisper_model": "large-v3-turbo",
         "command_whisper_model": "small",  # short voice commands: fast, stays loaded
         "rembg_model": "birefnet-general",

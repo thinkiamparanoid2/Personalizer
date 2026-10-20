@@ -211,22 +211,83 @@ async function signedUrl(path) {
 
 const pcDownload = ui(async entry => { window.open(await signedUrl(entry.path), '_blank'); });
 
+// ---------- Player: keeps playing when minimized, resumes where you left off ----------
+let nowPlaying = null; // { entry, offset } - offset = start second of a converted (non-seekable) stream
+
+function readPositions() {
+  try { return JSON.parse(localStorage.getItem('playPositions') || '{}'); } catch { return {}; }
+}
+function savePosition(path, seconds) {
+  const all = readPositions();
+  if (seconds > 0) all[path] = Math.floor(seconds); else delete all[path];
+  try { localStorage.setItem('playPositions', JSON.stringify(all)); } catch {}
+}
+
+function updateMiniPlayer() {
+  const v = $('pc-video');
+  const open = $('video-modal').classList.contains('show');
+  $('mini-player').style.display = nowPlaying && !open ? 'flex' : 'none';
+  if (nowPlaying) $('mini-title').innerText = nowPlaying.entry.name;
+  $('mini-toggle').innerHTML = `<i class="fa-solid ${v.paused ? 'fa-play' : 'fa-pause'}"></i>`;
+}
+
 const pcPlay = ui(async entry => {
+  const v = $('pc-video');
+  if (nowPlaying?.entry.path === entry.path) return pcShowPlayer(); // already loaded: just reopen
   const r = await api('/api/stream-link', { method: 'POST', json: { path: entry.path } });
+  const resume = readPositions()[entry.path] || 0;
+  nowPlaying = { entry, offset: r.transcode ? resume : 0 };
   // AC3/DTS audio (most movie rips) has no sound in browsers: the agent converts it to AAC on the fly.
-  $('video-title').innerText = entry.name + (r.transcode ? `  (converting ${r.audio || r.video} for the browser, no seeking - use VLC for full control)` : '');
-  $('pc-video').src = agent().url + (r.transcode ? r.compat_url : r.url);
-  toggleModal('video-modal', true);
-  $('pc-video').play().catch(() => {});
+  $('video-title').innerText = entry.name + (r.transcode ? '  (sound converted for the browser - no seeking, use VLC for full control)' : '');
+  v.src = agent().url + (r.transcode ? r.compat_url + (resume ? `&t=${resume}` : '') : r.url);
+  if (!r.transcode && resume) {
+    v.addEventListener('loadedmetadata', () => { if (resume < v.duration - 10) v.currentTime = resume; }, { once: true });
+  }
+  if (resume) toast(`Resuming from ${Math.floor(resume / 60)}:${String(resume % 60).padStart(2, '0')}`);
+  pcShowPlayer();
+  v.play().catch(() => {});
 });
 
+function pcShowPlayer() {
+  toggleModal('video-modal', true);
+  updateMiniPlayer();
+}
+
+// X / clicking outside: hide the window but keep playing (mini player bottom-right).
 function pcCloseVideo() {
+  toggleModal('video-modal', false);
+  updateMiniPlayer();
+}
+
+function pcTogglePlay() {
   const v = $('pc-video');
+  v.paused ? v.play().catch(() => {}) : v.pause();
+}
+
+function pcStopVideo() {
+  const v = $('pc-video');
+  if (nowPlaying) savePosition(nowPlaying.entry.path, nowPlaying.offset + v.currentTime);
   v.pause();
   v.removeAttribute('src');
   v.load();
+  nowPlaying = null;
   toggleModal('video-modal', false);
+  updateMiniPlayer();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const v = $('pc-video');
+  let lastSave = 0;
+  v.addEventListener('timeupdate', () => {
+    if (!nowPlaying || Date.now() - lastSave < 5000) return;
+    lastSave = Date.now();
+    savePosition(nowPlaying.entry.path, nowPlaying.offset + v.currentTime);
+  });
+  v.addEventListener('ended', () => { if (nowPlaying) savePosition(nowPlaying.entry.path, 0); });
+  ['play', 'pause'].forEach(evt => v.addEventListener(evt, updateMiniPlayer));
+  // The global overlay-click handler hides the modal; show the mini player when that happens.
+  $('video-modal').addEventListener('click', e => { if (e.target.id === 'video-modal') setTimeout(updateMiniPlayer); });
+});
 
 // On this PC: the agent launches VLC on the file. Elsewhere (phone): vlc:// link for VLC Android.
 const agentIsLocal = () => /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(agent().url);
@@ -354,7 +415,7 @@ const pcConvert = ui(async () => {
 
 Object.assign(window, {
   pcInit, pcSaveSettings, pcCommand, pcVoice, pcMedia, pcPlayYt, pcLoadAudio: ui(pcLoadAudio), pcSetAudio, pcPower,
-  pcSendClip, pcSendClipImage, pcUpload, pcDownload, pcPlay, pcCloseVideo, pcVlc, pcShare, pcBrowse,
+  pcSendClip, pcSendClipImage, pcUpload, pcDownload, pcPlay, pcCloseVideo, pcShowPlayer, pcTogglePlay, pcStopVideo, pcVlc, pcShare, pcBrowse,
   pcYtdl, pcNotes, pcPdf, pcReveal, pcConvert, pcConvertPick
 });
 // Inline handlers index into the latest lists.

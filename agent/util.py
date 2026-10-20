@@ -3,6 +3,7 @@ import ctypes
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 BIN_DIR = Path(__file__).with_name("bin")
@@ -86,14 +87,34 @@ def unique_path(path):
     return candidate
 
 
-def gemini():
-    """(client, model name) from config; raises if no API key is set."""
+_gemini_bad_until = {}  # model -> time until which it is tried last
+
+
+def gemini_generate(contents, config=None, fast=False):
+    """generate_content on the configured model, falling back to gemini_fallback_models when one is
+    overloaded/unavailable. fast=True: ~10 s per model, no retry backoff (interactive voice commands)."""
     from google import genai
-    from . import config
-    cfg = config.load()
+    from google.genai import types
+    from . import config as cfgmod
+    cfg = cfgmod.load()
     if not cfg["gemini_api_key"]:
         raise RuntimeError("Set gemini_api_key in agent/config.json")
-    return genai.Client(api_key=cfg["gemini_api_key"]), cfg["gemini_model"]
+    opts = types.HttpOptions(timeout=10000 if fast else 120000,  # Gemini minimum deadline is 10 s
+                             retry_options=types.HttpRetryOptions(attempts=1 if fast else 2))
+    client = genai.Client(api_key=cfg["gemini_api_key"], http_options=opts)
+    models = list(dict.fromkeys([cfg["gemini_model"], *cfg.get("gemini_fallback_models", [])]))
+    now = time.time()
+    # Models that failed recently go last, so the next call doesn't wait on a busy model first.
+    models.sort(key=lambda m: _gemini_bad_until.get(m, 0) > now)
+    last = None
+    for model in models:
+        try:
+            return client.models.generate_content(model=model, contents=contents, config=config)
+        except Exception as e:  # 503 overloaded, 504 timeout, 404 retired model...
+            print(f"Gemini {model} failed: {str(e)[:120]}")
+            _gemini_bad_until[model] = time.time() + 300
+            last = e
+    raise RuntimeError(f"All Gemini models failed: {str(last)[:200]}")
 
 
 def notify(title, msg=""):

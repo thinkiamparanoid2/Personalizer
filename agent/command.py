@@ -69,6 +69,9 @@ def parse_rules(text):
         if re.search(r"\b(download|save|get)\b", t):
             fmt = "mp3" if re.search(r"\b(mp3|audio|song)\b", t) else "mp4"
             return Command(action="ytdl", query=m.group(1), format=fmt)
+    if re.fullmatch(r"(what('s| is) the )?time( is it)?( now)?|what time is it( now)?", t):
+        from datetime import datetime
+        return Command(action="none", say=datetime.now().strftime("It's %I:%M %p.").replace(" 0", " "))
     if m := re.fullmatch(r"(?:play|put on|open)\s+(.+?)(?:\s+(?:on|from) youtube)?", t):
         return Command(action="play_yt", query=m.group(1))
     if m := re.search(r"\b(?:switch|change|swap)\b.*?\bto\s+(?:the\s+|my\s+)?(.+)", t):
@@ -94,11 +97,14 @@ def interpret(text):
     if cmd:
         return cmd
     from google.genai import types
-    from .util import gemini
-    client, model = gemini()
-    resp = client.models.generate_content(
-        model=model, contents=PROMPT.format(text=text),
-        config=types.GenerateContentConfig(response_mime_type="application/json"))
+    from .util import gemini_generate
+    try:
+        resp = gemini_generate(PROMPT.format(text=text), fast=True,
+                               config=types.GenerateContentConfig(response_mime_type="application/json"))
+    except Exception as e:  # every model overloaded, timeout, quota...
+        print("Gemini failed for command:", e)
+        return Command(action="none", say="Gemini is busy right now. Try again, or use a direct command "
+                                          "like 'volume down', 'pause' or 'play <song> on YouTube'.")
     data = json.loads(resp.text)
     if isinstance(data, list):  # occasionally wrapped in a list
         data = data[0] if data else {}
@@ -111,10 +117,17 @@ def transcribe_bytes(data, suffix=".webm"):
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        segments = transcribe(path, model=config.load()["command_whisper_model"])
+        segments = transcribe(path, model=config.load()["command_whisper_model"], fast=True)
         return " ".join(text for _, text in segments).strip()
     finally:
         os.unlink(path)
+
+
+def warm_up():
+    """Load the command speech model at startup so the first voice command isn't slow."""
+    import numpy as np
+    from .notes import transcribe
+    transcribe(np.zeros(16000, dtype=np.float32), model=config.load()["command_whisper_model"], fast=True)
 
 
 HEADPHONES = ("headphone", "headset", "earphone", "earbud", "airpod", "buds")
