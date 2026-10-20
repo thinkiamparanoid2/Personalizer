@@ -72,6 +72,8 @@ CLIENT_TOOLS = [
         {"description": {"type": "string", "description": "Name of the item (fuzzy match)"}}, ["description"]),
     _fn("list_movies", "List the user's movie/series watchlist.",
         {"status": {"type": "string", "enum": ["watched", "plan-to-watch"]}}),
+    _fn("uninstall_app", "Uninstall an installed program (the user is asked to confirm first).",
+        {"name": {"type": "string"}}, ["name"]),
     _fn("power_action", "Lock, sleep or shut down the PC, or cancel a pending sleep/shutdown. "
                         "The user is asked to confirm sleep and shutdown.",
         {"action": {"type": "string", "enum": ["lock", "sleep", "shutdown", "cancel"]},

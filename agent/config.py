@@ -48,7 +48,7 @@ def _defaults():
         "gemini_api_key": "",
         "gemini_model": "gemini-3.8-flash",
         # Tried in order when the main model is overloaded (503/504) or missing (404).
-        "gemini_fallback_models": ["gemini-3.5-flash"],
+        "gemini_fallback_models": ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"],
         "whisper_model": "large-v3-turbo",
         "command_whisper_model": "large-v3-turbo",  # same model as notes: accurate, ~0.5 s on GPU
         "command_language": "en",  # "" = auto-detect (unreliable on 2-second clips)

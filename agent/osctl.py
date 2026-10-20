@@ -90,6 +90,42 @@ def open_app(name):
     return {"opened": app["Name"]}
 
 
+# --- Uninstall: open the program's own uninstaller (never silent; the user confirms in it) ---
+def installed_programs():
+    import winreg
+    keys = [(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall")]
+    out = []
+    for root, path in keys:
+        try:
+            base = winreg.OpenKey(root, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(base)[0]):
+            try:
+                sub = winreg.OpenKey(base, winreg.EnumKey(base, i))
+                vals = {}
+                for name in ("DisplayName", "UninstallString", "SystemComponent"):
+                    try:
+                        vals[name] = winreg.QueryValueEx(sub, name)[0]
+                    except OSError:
+                        pass
+                if vals.get("DisplayName") and vals.get("UninstallString") and not vals.get("SystemComponent"):
+                    out.append({"Name": vals["DisplayName"], "AppID": vals["UninstallString"]})
+            except OSError:
+                continue
+    return out
+
+
+def uninstall_app(name):
+    prog = match_app(name, installed_programs())
+    if not prog:
+        raise ValueError(f"No installed program called '{name}'")
+    subprocess.Popen(prog["AppID"])  # the program's uninstaller shows its own confirmation
+    return {"uninstaller_opened": prog["Name"]}
+
+
 # --- Close apps: graceful first, force only background leftovers ---
 PROTECTED = {"explorer", "svchost", "csrss", "winlogon", "lsass", "services", "smss", "wininit", "dwm",
              "system", "registry", "python", "pythonw", "conhost", "powershell", "cmd", "taskmgr"}

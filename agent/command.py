@@ -18,7 +18,7 @@ MEDIA = Literal["volume_up", "volume_down", "mute", "play_pause", "next", "prev"
 
 
 class Command(BaseModel):
-    action: Literal["media", "play_yt", "open_app", "close_app", "power", "audio_device", "ytdl", "none"]
+    action: Literal["media", "play_yt", "open_app", "close_app", "uninstall_app", "power", "audio_device", "ytdl", "none"]
     media: Optional[MEDIA] = None
     query: Optional[str] = None  # YouTube search, audio device hint, or video URL
     power: Optional[Literal["lock", "sleep", "shutdown", "cancel"]] = None
@@ -72,6 +72,8 @@ def parse_rules(text):
     if re.fullmatch(r"(what('s| is) the )?time( is it)?( now)?|what time is it( now)?", t):
         from datetime import datetime
         return Command(action="none", say=datetime.now().strftime("It's %I:%M %p.").replace(" 0", " "))
+    if m := re.fullmatch(r"(?:uninstall|remove|delete)\s+(.+?)(?:\s+from (?:my |the )?(?:pc|computer|laptop))?", t):
+        return Command(action="uninstall_app", query=m.group(1))
     if m := re.fullmatch(r"(?:close|quit|exit|kill|terminate)\s+(.+)", t):
         return Command(action="close_app", query=m.group(1))
     if m := re.fullmatch(r"(?:open|launch|start|run)\s+(.+?)\s+(?:on|from) youtube", t):
@@ -86,12 +88,13 @@ def parse_rules(text):
 
 
 PROMPT = """You turn a spoken request into one command for a Windows PC. Reply with JSON only:
-{{"action": "media|play_yt|open_app|close_app|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
+{{"action": "media|play_yt|open_app|close_app|uninstall_app|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
 "query": "...", "power": "lock|sleep|shutdown|cancel", "delay_s": 0, "format": "mp4|mp3", "say": "..."}}
 - media: playback/volume keys.
 - play_yt: query = what to search and play on YouTube.
 - open_app: query = name of an installed PC app or game to launch (e.g. "Riot Client", "Discord").
 - close_app: query = name of a running app to close.
+- uninstall_app: query = name of an installed program to uninstall (opens its uninstaller for confirmation).
 - audio_device: query = output device hint, e.g. "headphones" or "speakers".
 - power: delay_s = seconds from now (0 = now).
 - ytdl: query = the video URL to download; format mp3 for audio only.
@@ -111,8 +114,10 @@ def interpret(text):
                                config=types.GenerateContentConfig(response_mime_type="application/json"))
     except Exception as e:  # every model overloaded, timeout, quota...
         print("Gemini failed for command:", e)
-        return Command(action="none", say="Gemini is busy right now. Try again, or use a direct command "
-                                          "like 'volume down', 'pause' or 'play <song> on YouTube'.")
+        why = ("Gemini's free daily quota is used up (resets around 1 PM)" if "quota" in str(e).lower()
+               else "Gemini is busy right now")
+        return Command(action="none", say=f"{why}. Direct commands still work: 'volume down', 'pause', "
+                                          "'open/close <app>', 'play <song> on YouTube'.")
     data = json.loads(resp.text)
     if isinstance(data, list):  # occasionally wrapped in a list
         data = data[0] if data else {}
@@ -186,6 +191,9 @@ def execute(cmd):
     if cmd.action == "play_yt":
         r = osctl.play_yt(cmd.query or "")
         return f"Playing {r.get('title') or r['url']}"
+    if cmd.action == "uninstall_app":
+        r = osctl.uninstall_app(cmd.query or "")
+        return f"Opened the {r['uninstaller_opened']} uninstaller - confirm there"
     if cmd.action == "close_app":
         r = osctl.close_app(cmd.query or "")
         return f"Closed {r['closed']}" if "closed" in r else f"Asked {r['closing']} to close ({r['note']})"
@@ -210,6 +218,13 @@ async def dispatch(cmd, confirmed=False, heard=None):
     if cmd.action == "power" and cmd.power in NEEDS_CONFIRM and not confirmed:
         when = f"in {cmd.delay_s // 60} min" if cmd.delay_s >= 60 else "now"
         return {"heard": heard, "confirm": f"{cmd.power.capitalize()} the PC {when}?", "command": cmd.model_dump()}
+    if cmd.action == "uninstall_app" and not confirmed:
+        # Some uninstallers (e.g. Discord's) run silently, so always confirm here first.
+        from .osctl import installed_programs, match_app
+        prog = match_app(cmd.query or "", installed_programs())
+        if not prog:
+            return {"heard": heard, "did": f"No installed program called '{cmd.query}'", "command": cmd.model_dump()}
+        return {"heard": heard, "confirm": f"Uninstall {prog['Name'].strip()} from this PC?", "command": cmd.model_dump()}
     did = execute(cmd) if cmd.action in MAIN_THREAD else await run_in_threadpool(execute, cmd)
     return {"heard": heard, "did": did, "command": cmd.model_dump()}
 
@@ -247,6 +262,8 @@ def _self_check():
     assert match_app("photoshop", apps) is None
     assert r("close riot client") == ("close_app", "riot client", 0)
     assert r("quit discord") == ("close_app", "discord", 0)
+    assert r("uninstall valorant from my computer") == ("uninstall_app", "valorant", 0)
+    assert r("remove discord") == ("uninstall_app", "discord", 0)
     from .osctl import select_targets
     apps_real = [{"Name": "Riot Client", "AppID": r"F:\Riot Games\Riot Client\RiotClientServices.exe"},
                  {"Name": "Discord", "AppID": "com.squirrel.Discord.Discord"}]

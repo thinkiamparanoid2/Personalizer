@@ -112,8 +112,12 @@ def gemini_generate(contents, config=None, fast=False, timeout_s=None):
             return client.models.generate_content(model=model, contents=contents, config=config)
         except Exception as e:  # 503 overloaded, 504 timeout, 404 retired model...
             print(f"Gemini {model} failed: {str(e)[:120]}")
-            _gemini_bad_until[model] = time.time() + 300
+            quota = "RESOURCE_EXHAUSTED" in str(e) or " 429" in f" {e}"
+            _gemini_bad_until[model] = time.time() + (3600 if quota else 300)  # quotas reset daily
             last = e
+    if last is not None and ("RESOURCE_EXHAUSTED" in str(last) or "429" in str(last)):
+        raise RuntimeError("Gemini quota used up: the free daily limit for these models is reached "
+                           "(resets daily, around 1 PM Bangladesh time).")
     raise RuntimeError(f"All Gemini models failed: {str(last)[:200]}")
 
 

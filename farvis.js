@@ -197,6 +197,12 @@ async function runClientTool(call) {
     await api('/api/power', { method: 'POST', json: { action: args.action, delay_s: delay * 60 } });
     return { ok: true, done: `${args.action}${delay ? ` in ${delay} min` : ''}` };
   }
+  if (call.name === 'uninstall_app') {
+    if (!confirm(`Uninstall ${args.name} from your PC?`)) return { cancelled_by_user: true };
+    const r = await api('/api/command', { method: 'POST',
+      json: { command: { action: 'uninstall_app', query: args.name }, confirmed: true } });
+    return { ok: true, done: r.did };
+  }
   const tool = window.farvis?.tools?.[call.name];
   return tool ? tool(args) : { error: `unknown tool ${call.name}` };
 }
@@ -233,6 +239,7 @@ async function ask(text) {
     bubble.innerHTML = md(r.reply || 'Done.') + (chips ? `<div class="chips">${chips}</div>` : '');
   } catch (e) {
     bubble.textContent = /Failed to fetch|NetworkError/i.test(e.message) ? 'Your PC agent seems offline.'
+      : /quota/i.test(e.message) ? "Gemini's free daily quota is used up (it resets around 1 PM). Direct commands in PC Control still work."
       : /Gemini/i.test(e.message) ? 'Gemini is busy right now. Try again in a moment.' : e.message;
   } finally {
     busy = false;
