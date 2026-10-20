@@ -10,7 +10,7 @@ From the repo root (Windows, Python 3.12):
 ```bash
 python -m venv agent/.venv
 agent/.venv/Scripts/python -m pip install -r agent/requirements.txt
-agent/.venv/Scripts/python -m pip uninstall -y onnxruntime   # rembg may pull the CPU build next to onnxruntime-gpu
+agent/.venv/Scripts/python -m pip uninstall -y onnxruntime   # faster-whisper pulls the CPU build, which shadows onnxruntime-gpu
 agent/.venv/Scripts/python -m agent
 ```
 

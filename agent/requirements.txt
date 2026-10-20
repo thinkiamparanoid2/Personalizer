@@ -16,7 +16,9 @@ reportlab>=4.0
 subliminal>=2.2
 google-genai>=1.0
 faster-whisper>=1.1  # large-v3-turbo
-rembg[gpu]>=2.0.60
+av>=12,<17  # PyAV 17+ dropped an argument faster-whisper 1.2 passes
+rembg>=2.0.60
+onnxruntime-gpu>=1.20,<1.24  # 1.24+ is built for CUDA 13; the wheels below are CUDA 12
 # CUDA 12 runtime for faster-whisper / onnxruntime-gpu (no system CUDA install needed)
 nvidia-cublas-cu12
 nvidia-cudnn-cu12>=9,<10
