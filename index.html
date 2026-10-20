@@ -6,6 +6,10 @@
   <title>Command Center</title>
   
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Catch the install offer before the (deferred) module scripts load; script.js picks it up.
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.__installPrompt = e; });
+  </script>
   <link rel="icon" type="image/png" href="icon-192.png">
   
   <meta name="theme-color" content="#8b0000">

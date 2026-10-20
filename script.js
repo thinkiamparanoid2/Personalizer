@@ -51,7 +51,7 @@ const cssUrl = u => escapeHTML(safeUrl(u).replace(/["'()\\]/g, c => '%' + c.char
 const installButtons = () => document.querySelectorAll('.install-app-btn');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
-  deferredPrompt = e;
+  deferredPrompt = window.__installPrompt = e;
   installButtons().forEach(btn => { btn.style.display = 'flex'; });
 });
 
@@ -61,9 +61,11 @@ if (window.matchMedia('(display-mode: standalone)').matches) {
 }
 
 async function installApp() {
+  deferredPrompt = deferredPrompt || window.__installPrompt;
   if (!deferredPrompt) {
     return alert([
-      "Install from the browser menu:", "",
+      "If you see the ⧉ icon at the right of the address bar, the app is already installed: click it to open it.", "",
+      "Otherwise install from the browser menu:", "",
       "Brave: menu (≡, top right) -> Save and share -> Install page as app",
       "Chrome/Edge: the install icon at the right of the address bar",
       "Android: menu -> Add to Home screen / Install app"
