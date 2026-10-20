@@ -73,4 +73,7 @@ $('pwa-url').addEventListener('change', e => {
   try { new URL(v); chrome.storage.sync.set({ pwaUrl: v }); } catch { alert('Enter a full URL, e.g. https://your-project.web.app/'); }
 });
 
+chrome.storage.local.get('agentToken').then(({ agentToken }) => { if (agentToken) $('agent-token').value = agentToken; });
+$('agent-token').addEventListener('change', e => chrome.storage.local.set({ agentToken: e.target.value.trim() }));
+
 render();

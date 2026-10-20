@@ -139,3 +139,8 @@ dist
 agent/config.json
 agent/.venv/
 __pycache__/
+agent/bin/
+agent/state.json
+
+# CodeGraph index
+.codegraph/

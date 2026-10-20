@@ -64,6 +64,7 @@
         <li onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
         <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> Media Tracker</li>
         <li onclick="switchTab('shopping',this)"><i class="fa-solid fa-cart-shopping"></i> Shopping List</li>
+        <li onclick="switchTab('pc',this);pcInit()"><i class="fa-solid fa-desktop"></i> PC Control</li>
       </ul>
       <div class="github-link" style="margin-top:auto;">
         <button class="add-btn" style="width:100%;justify-content:center;background:#333;" onclick="handleLogout()">
@@ -164,6 +165,72 @@
           <button class="m-tab" onclick="filterShopping('bought',this)"><i class="fa-solid fa-check"></i> Bought</button>
         </div>
         <div class="shopping-list" id="shopping-list"></div>
+      </section>
+
+      <section id="pc" class="tab-content fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">PC Control <span id="pc-status" class="pc-status" title="Agent status"></span></h1>
+          <button class="add-btn" style="background:#333;" onclick="toggleModal('agent-settings-modal',true)"><i class="fa-solid fa-gear"></i> Agent</button>
+        </div>
+        <div class="pc-grid">
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-sliders"></i> Remote</h3>
+            <div class="pc-row">
+              <button onclick="pcMedia('volume_down')" aria-label="Volume down"><i class="fa-solid fa-volume-low"></i></button>
+              <button onclick="pcMedia('mute')" aria-label="Mute"><i class="fa-solid fa-volume-xmark"></i></button>
+              <button onclick="pcMedia('volume_up')" aria-label="Volume up"><i class="fa-solid fa-volume-high"></i></button>
+              <button onclick="pcMedia('prev')" aria-label="Previous"><i class="fa-solid fa-backward-step"></i></button>
+              <button onclick="pcMedia('play_pause')" aria-label="Play/pause"><i class="fa-solid fa-play"></i></button>
+              <button onclick="pcMedia('next')" aria-label="Next"><i class="fa-solid fa-forward-step"></i></button>
+            </div>
+            <div class="pc-row"><input id="pc-yt-query" placeholder="Play on YouTube: song or video..." onkeydown="if(event.key==='Enter')pcPlayYt()"><button onclick="pcPlayYt()"><i class="fa-brands fa-youtube"></i></button></div>
+            <div class="pc-row"><select id="pc-audio" onchange="pcSetAudio(this.value)"><option>Audio output...</option></select><button onclick="pcLoadAudio()" aria-label="Refresh devices"><i class="fa-solid fa-rotate"></i></button></div>
+            <div class="pc-row">
+              <button onclick="pcPower('lock')"><i class="fa-solid fa-lock"></i> Lock</button>
+              <input id="pc-power-min" type="number" min="0" value="0" style="flex:0 0 70px" aria-label="Delay minutes"><span class="pc-muted">min</span>
+              <button onclick="pcPower('sleep')"><i class="fa-solid fa-moon"></i> Sleep</button>
+              <button onclick="pcPower('shutdown')"><i class="fa-solid fa-power-off"></i> Off</button>
+              <button onclick="pcPower('cancel')">Cancel</button>
+            </div>
+          </div>
+
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-paste"></i> Clipboard → PC</h3>
+            <textarea id="pc-clip" rows="3" placeholder="Text to paste on PC (Ctrl+V)"></textarea>
+            <div class="pc-row"><button onclick="pcSendClip()">Send text</button><input type="file" id="pc-clip-img" accept="image/*"><button onclick="pcSendClipImage()">Send image</button></div>
+          </div>
+
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-wifi"></i> AirDrop</h3>
+            <div class="pc-row"><input type="file" id="pc-drop-files" multiple><button onclick="pcUpload()"><i class="fa-solid fa-upload"></i> Send to PC</button></div>
+            <div id="pc-drop-list" class="pc-list"></div>
+          </div>
+
+          <div class="pc-card">
+            <h3><i class="fa-brands fa-youtube"></i> YouTube &amp; Study Notes</h3>
+            <div class="pc-row"><input id="pc-yt-url" placeholder="Video URL"></div>
+            <div class="pc-row">
+              <button onclick="pcYtdl('mp4')">Download 1080p</button>
+              <button onclick="pcYtdl('mp3')">Download MP3</button>
+              <button onclick="pcNotes()">Study Notes</button>
+            </div>
+            <div id="pc-jobs" class="pc-list"></div>
+          </div>
+
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-file-pdf"></i> PDF Tools</h3>
+            <div class="pc-row"><input type="file" id="pc-pdf-merge" multiple accept=".pdf,image/*"><button onclick="pcPdf('merge')">Merge</button></div>
+            <div class="pc-row"><input type="file" id="pc-pdf-compress" accept=".pdf,image/*">
+              <select id="pc-pdf-target"><option value="2048">&lt; 2 MB</option><option value="200">&lt; 200 KB</option></select>
+              <button onclick="pcPdf('compress')">Compress</button></div>
+            <div class="pc-row"><input type="file" id="pc-pdf-stamp" accept=".pdf"><button onclick="pcPdf('stamp')">Stamp signature</button></div>
+          </div>
+
+          <div class="pc-card pc-wide">
+            <h3><i class="fa-solid fa-folder-open"></i> Files <span id="pc-path" class="pc-muted"></span></h3>
+            <div id="pc-files" class="pc-list"></div>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -292,9 +359,28 @@
     </div>
   </div>
 
+  <div id="agent-settings-modal" class="modal-overlay">
+    <div class="modal-content" style="width:420px;">
+      <div class="modal-header"><h2>PC Agent</h2><button class="close-modal-btn" onclick="toggleModal('agent-settings-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Agent URL (Tailscale HTTPS)</label><input type="url" id="agent-url" placeholder="https://pc.tailnet.ts.net"></div>
+        <div class="input-group"><label>Token (agent/config.json)</label><input type="password" id="agent-token" autocomplete="off"></div>
+        <button class="submit-btn" onclick="pcSaveSettings()">Save &amp; Test</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="video-modal" class="modal-overlay">
+    <div class="modal-content" style="width:min(900px,95vw);">
+      <div class="modal-header"><h2 id="video-title" style="font-size:1rem;"></h2><button class="close-modal-btn" onclick="pcCloseVideo()"><i class="fa-solid fa-xmark"></i></button></div>
+      <video id="pc-video" controls playsinline style="width:100%;max-height:70vh;background:#000;border-radius:8px;"></video>
+    </div>
+  </div>
+
   <div id="toast" class="toast">Action successful!</div>
 
   <script type="module" src="script.js"></script>
+  <script type="module" src="pc.js"></script>
   <script>
     if('serviceWorker' in navigator){
       window.addEventListener('load',()=>{

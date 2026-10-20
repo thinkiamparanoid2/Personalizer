@@ -16,7 +16,11 @@ def resolve_allowed(path, roots=None):
         raise PermissionError("absolute path required")
     real = p.resolve(strict=True)  # FileNotFoundError if missing
     for root in roots:
-        if real.is_relative_to(Path(root).resolve(strict=True)):
+        try:
+            root_real = Path(root).resolve(strict=True)
+        except OSError:  # a configured root that doesn't exist (yet) grants nothing
+            continue
+        if real.is_relative_to(root_real):
             return real
     raise PermissionError("path outside allowed roots")
 

@@ -156,6 +156,34 @@ body {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
 .vault-container { position: relative; min-height: 400px; }
+
+/* PC CONTROL */
+.pc-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #c62828; vertical-align: middle; margin-left: 6px; }
+.pc-status.ok { background: #2e7d32; }
+.pc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.2rem; }
+.pc-card { background: var(--white); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.2rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-width: 0; }
+.pc-card.pc-wide { grid-column: 1 / -1; }
+.pc-card h3 { color: var(--text-dark); font-size: 1rem; margin-bottom: 0.8rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pc-card h3 i { color: var(--maroon); }
+.pc-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.pc-card input:not([type="file"]), .pc-card select, .pc-card textarea {
+  flex: 1; min-width: 0; padding: 0.55rem 0.7rem; border: 1px solid var(--input-border); border-radius: 8px;
+  background: var(--bg-light); color: var(--text-dark); font: inherit;
+}
+.pc-card textarea { width: 100%; resize: vertical; margin-bottom: 8px; }
+.pc-card input[type="file"] { flex: 1; min-width: 0; font-size: 0.8rem; color: var(--text-gray); }
+.pc-card button {
+  background: var(--text-dark); color: var(--bg-light); border: none; border-radius: 8px;
+  padding: 0.5rem 0.75rem; cursor: pointer; font-weight: 600; min-height: 38px;
+}
+.pc-card button:hover { background: var(--maroon); color: #fff; }
+.pc-muted { color: var(--text-gray); font-size: 0.8rem; font-weight: 400; }
+.pc-list { max-height: 420px; overflow-y: auto; }
+.pc-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--border-color); color: var(--text-dark); }
+.pc-item .pc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-item button { padding: 0.35rem 0.6rem; min-height: 32px; }
+.pc-click { cursor: pointer; }
+.pc-click:hover { background: var(--border-color); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }
 .chip-row:empty { display: none; }
 .id-chip {

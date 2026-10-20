@@ -22,6 +22,8 @@ def _tailscale_names():
 
 
 def _defaults():
+    home = Path.home()
+    phone_drop = str(home / "Desktop" / "PhoneDrop")
     return {
         "token": secrets.token_urlsafe(32),
         "stream_secret": secrets.token_urlsafe(32),
@@ -31,17 +33,50 @@ def _defaults():
         "allowed_hosts": ["127.0.0.1", "localhost", *filter(None, _tailscale_names())],
         # Exact origins allowed by CORS, e.g. "https://<project>.web.app", "chrome-extension://<id>".
         "cors_origins": [],
-        # Only files under these folders can be streamed.
-        "roots": [str(Path.home() / "Videos")],
+        # Only files under these folders can be browsed/streamed/shared (add "D:\\" etc. for full drives).
+        "roots": [str(home / "Videos"), phone_drop],
+        "phone_drop_dir": phone_drop,
+        "downloads_dir": str(home / "Downloads"),
+        "youtube_dir": r"D:\YouTube",
+        "papers_dir": r"D:\Papers",
+        "notes_dir": r"D:\StudyNotes",
+        "brave_exe": r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+        "qbittorrent_exe": r"E:\qBittorrent\qbittorrent.exe",
+        "vlc_exe": r"E:\VLC\vlc.exe",
+        "sevenzip_exe": r"C:\Program Files\7-Zip\7z.exe",
+        "cloudflared_exe": "cloudflared",
+        "gemini_api_key": "",
+        "gemini_model": "gemini-2.5-flash",
+        "whisper_model": "large-v3-turbo",
+        "rembg_model": "birefnet-general",
+        "signature_png": "",
+        # OpenSubtitles.com account (optional; podnapisi works without one).
+        "opensubtitles_username": "",
+        "opensubtitles_password": "",
+        "snip_hotkey": "alt+s",
+        "share_ttl_minutes": 60,
+        "watch_downloads": True,
     }
 
 
+_cache = None
+
+
 def load():
+    """Read once per process (restart the agent after editing config.json)."""
+    global _cache
+    if _cache is None:
+        _cache = _load()
+    return _cache
+
+
+def _load():
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(_defaults(), indent=2), encoding="utf-8")
         print(f"Created {CONFIG_PATH} - edit cors_origins/roots, then copy the token to your clients.")
     cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    if "stream_secret" not in cfg:  # configs from before signed stream links
-        cfg["stream_secret"] = secrets.token_urlsafe(32)
+    missing = {k: v for k, v in _defaults().items() if k not in cfg}  # keys added in later versions
+    if missing:
+        cfg.update(missing)
         CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return cfg

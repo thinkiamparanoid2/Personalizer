@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-center-v6';
+const CACHE_NAME = 'command-center-v7';
 
 const APP_SHELL = [
   '/',
@@ -7,6 +7,7 @@ const APP_SHELL = [
   '/script.js',
   '/firebase.js',
   '/vault-crypto.js',
+  '/pc.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',

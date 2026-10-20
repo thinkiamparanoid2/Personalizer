@@ -1023,6 +1023,7 @@ window.handleLogout        = handleLogout;
 window.switchTab           = switchTab;
 window.filterItems         = filterItems;
 window.copyText            = copyText;
+window.showToast           = showToast;
 window.toggleModal         = toggleModal;
 window.unlockVault         = unlockVault;
 window.verifyPin           = verifyPin;

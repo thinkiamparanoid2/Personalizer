@@ -1,9 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Personalizer Companion",
-  "version": "0.1.0",
-  "description": "IMDb watchlist buttons and 1-click tab workspace freeze for Personalizer.",
+  "version": "0.2.0",
+  "description": "IMDb watchlist buttons, YouTube download/study-notes buttons and 1-click tab workspace freeze for Personalizer.",
   "permissions": ["tabs", "storage"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "Personalizer" },
   "content_scripts": [
     {
@@ -13,6 +15,11 @@
         "https://m.imdb.com/title/tt*"
       ],
       "js": ["imdb.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["youtube.js"],
       "run_at": "document_idle"
     }
   ]

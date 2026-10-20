@@ -1,4 +1,26 @@
 fastapi>=0.115
 starlette>=0.39  # FileResponse Range/206 support
 uvicorn>=0.30
+python-multipart>=0.0.9  # file uploads
 pycaw>=20240316  # AudioDevice.EndpointVolume
+pywin32>=306  # clipboard, Word COM, shortcuts
+winotify>=1.1  # toasts
+keyboard>=0.13  # global snip hotkey
+watchdog>=4.0  # Downloads router
+yt-dlp[default]>=2025.10  # [default] adds the YouTube JS challenge solver
+imageio-ffmpeg>=0.5  # bundled ffmpeg if none on PATH
+pillow>=11
+pillow-heif>=0.18
+pypdf>=5.0
+reportlab>=4.0
+subliminal>=2.2
+google-genai>=1.0
+faster-whisper>=1.1  # large-v3-turbo
+rembg[gpu]>=2.0.60
+# CUDA 12 runtime for faster-whisper / onnxruntime-gpu (no system CUDA install needed)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10
+nvidia-cuda-runtime-cu12
+nvidia-cufft-cu12
+nvidia-curand-cu12
+nvidia-cuda-nvrtc-cu12
