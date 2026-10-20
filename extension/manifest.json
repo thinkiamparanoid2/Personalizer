@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Personalizer Companion",
+  "version": "0.1.0",
+  "description": "IMDb watchlist buttons and 1-click tab workspace freeze for Personalizer.",
+  "permissions": ["tabs", "storage"],
+  "action": { "default_popup": "popup.html", "default_title": "Personalizer" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.imdb.com/title/tt*",
+        "https://www.imdb.com/*/title/tt*",
+        "https://m.imdb.com/title/tt*"
+      ],
+      "js": ["imdb.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

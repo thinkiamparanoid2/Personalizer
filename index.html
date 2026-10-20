@@ -41,26 +41,12 @@
       </div>
       <div id="signup-form" class="auth-form">
         <div class="input-group"><label>Email</label><input type="email" id="signup-email" placeholder="user@example.com"></div>
-        <div class="input-group"><label>Password</label><input type="password" id="signup-password" placeholder="••••••••"></div>
-        <div class="input-group"><label>Security Question</label>
-          <select id="signup-question">
-            <option value="Who's the person you love the most?">Who's the person you love the most?</option>
-            <option value="What do you fear the most?">What do you fear the most?</option>
-            <option value="Are you gay?">Are you gay?</option>
-          </select>
-        </div>
-        <div class="input-group"><label>Answer</label><input type="text" id="signup-answer" placeholder="Your secret answer"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="signup-password" placeholder="••••••••" autocomplete="new-password"></div>
         <button class="submit-btn" onclick="handleSignup()">Create Account</button>
       </div>
       <div id="forgot-form" class="auth-form">
-        <div class="input-group"><label>Enter your Email</label><input type="email" id="forgot-email" placeholder="user@example.com"></div>
-        <button class="submit-btn" onclick="fetchSecurityQuestion()">Get Security Question</button>
-        <div id="recover-section" style="display:none;margin-top:15px;">
-          <p id="recovered-question" style="font-weight:bold;margin-bottom:10px;"></p>
-          <div class="input-group"><input type="text" id="forgot-answer" placeholder="Your Answer"></div>
-          <button class="submit-btn" onclick="recoverPassword()">Reveal Password</button>
-          <p id="revealed-password" style="margin-top:10px;color:var(--maroon);font-weight:bold;"></p>
-        </div>
+        <div class="input-group"><label>Enter your Email</label><input type="email" id="forgot-email" placeholder="user@example.com" onkeydown="if(event.key==='Enter')sendResetEmail()"></div>
+        <button class="submit-btn" onclick="sendResetEmail()">Send Reset Link</button>
         <p class="auth-link" style="margin-top:15px;" onclick="switchAuthTab('login')">Back to Login</p>
       </div>
     </div>
@@ -98,18 +84,24 @@
       <section id="vault" class="tab-content active-tab fade-in">
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Secure Vault</h1>
-          <button class="add-btn" onclick="toggleModal('add-vault-modal',true)"><i class="fa-solid fa-plus"></i> Add Item</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+            <button class="add-btn" style="background:#333;" onclick="toggleModal('reset-pin-modal',true)"><i class="fa-solid fa-key"></i> Change Passphrase</button>
+            <button class="add-btn" style="background:#555;" onclick="toggleModal('add-chip-modal',true)"><i class="fa-solid fa-copy"></i> Add Chip</button>
+            <button class="add-btn" onclick="toggleModal('add-vault-modal',true)"><i class="fa-solid fa-plus"></i> Add Item</button>
+          </div>
         </div>
         <div class="vault-container">
+          <div class="chip-row" id="chip-row"></div>
           <div class="vault-grid" id="vault-data"></div>
           <div class="locked-state glass-overlay" id="vault-lock">
             <i class="fa-solid fa-lock lock-icon"></i>
-            <h3>Vault Locked</h3><p>Enter PIN or use biometrics</p>
+            <h3>Vault Locked</h3><p id="vault-lock-msg">Loading vault...</p>
             <div class="pin-container">
-              <input type="password" id="vault-pin" maxlength="4" placeholder="••••" autocomplete="off" inputmode="numeric">
-              <button onclick="verifyPin()" class="unlock-btn">Unlock</button>
+              <input type="password" id="vault-pin" placeholder="Passphrase" autocomplete="current-password">
+              <input type="password" id="vault-pin-confirm" placeholder="Confirm" autocomplete="new-password" style="display:none;">
+              <button onclick="verifyPin()" class="unlock-btn" id="vault-unlock-btn">Unlock</button>
             </div>
-            <p style="color:var(--maroon);cursor:pointer;font-size:0.9rem;font-weight:bold;margin-top:15px;" onclick="toggleModal('reset-pin-modal',true)">Forgot PIN?</p>
+            <p style="color:var(--maroon);cursor:pointer;font-size:0.9rem;font-weight:bold;margin-top:15px;" onclick="forgotPassphrase()">Forgot passphrase?</p>
             <div class="divider"><span>OR</span></div>
             <div class="biometric-option" onclick="unlockVault()">
               <i class="fa-solid fa-fingerprint fingerprint-icon"></i><p>Tap Fingerprint</p>
@@ -202,6 +194,17 @@
     </div>
   </div>
 
+  <div id="add-chip-modal" class="modal-overlay">
+    <div class="modal-content" style="width:380px;">
+      <div class="modal-header"><h2>Add Quick-Copy Chip</h2><button class="close-modal-btn" onclick="toggleModal('add-chip-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">
+        <div class="input-group"><label>Label</label><input type="text" id="chipLabel" placeholder="e.g. BRACU ID"></div>
+        <div class="input-group"><label>Value (encrypted)</label><input type="text" id="chipValue" placeholder="e.g. 22201161" onkeydown="if(event.key==='Enter')saveChip()"></div>
+        <button class="submit-btn" onclick="saveChip()">Save Chip</button>
+      </div>
+    </div>
+  </div>
+
   <div id="add-cred-modal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header"><h2>Add Credential</h2><button class="close-modal-btn" onclick="toggleModal('add-cred-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
@@ -267,12 +270,12 @@
 
   <div id="reset-pin-modal" class="modal-overlay">
     <div class="modal-content" style="width:350px;">
-      <div class="modal-header"><h2>Reset Vault PIN</h2><button class="close-modal-btn" onclick="toggleModal('reset-pin-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-header"><h2>Change Vault Passphrase</h2><button class="close-modal-btn" onclick="toggleModal('reset-pin-modal',false)"><i class="fa-solid fa-xmark"></i></button></div>
       <div class="modal-body">
-        <p style="font-size:0.85rem;color:var(--text-gray);margin-bottom:1.5rem;">Enter your login password to authorize a PIN reset.</p>
-        <div class="input-group"><label>Login Password</label><input type="password" id="reset-pin-password" placeholder="••••••••"></div>
-        <div class="input-group"><label>New 4-Digit PIN</label><input type="password" id="new-vault-pin" maxlength="4" placeholder="••••" inputmode="numeric"></div>
-        <button class="submit-btn" onclick="handlePinReset()">Confirm New PIN</button>
+        <p style="font-size:0.85rem;color:var(--text-gray);margin-bottom:1.5rem;">Vault must be unlocked. Existing data stays encrypted with the same key; only the passphrase changes.</p>
+        <div class="input-group"><label>New Passphrase (8+ characters)</label><input type="password" id="new-vault-pin" placeholder="••••••••" autocomplete="new-password"></div>
+        <div class="input-group"><label>Confirm Passphrase</label><input type="password" id="new-vault-pin-confirm" placeholder="••••••••" autocomplete="new-password"></div>
+        <button class="submit-btn" onclick="changePassphrase()">Change Passphrase</button>
       </div>
     </div>
   </div>

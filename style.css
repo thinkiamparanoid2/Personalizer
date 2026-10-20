@@ -156,6 +156,20 @@ body {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
 .vault-container { position: relative; min-height: 400px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }
+.chip-row:empty { display: none; }
+.id-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border-color); border-radius: 999px; cursor: pointer;
+  font-size: 0.85rem; color: var(--text-dark); max-width: 100%;
+}
+.id-chip:hover { border-color: var(--maroon); }
+.id-chip b { color: var(--maroon); font-weight: 600; }
+.id-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
+.id-chip button {
+  border: none; background: none; color: var(--text-gray); cursor: pointer;
+  font-size: 1rem; line-height: 1; padding: 0 4px;
+}
 .vault-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
@@ -181,10 +195,10 @@ body {
 
 .locked-state h3 { color: var(--text-dark); margin-bottom: 0.5rem; margin-top: 1rem;}
 .locked-state p { color: var(--text-gray); margin-bottom: 1.5rem; }
-.pin-container { display: flex; gap: 10px; justify-content: center; }
-#vault-pin {
-  width: 120px; padding: 0.8rem; font-size: 1.5rem; text-align: center;
-  letter-spacing: 8px;
+.pin-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+#vault-pin, #vault-pin-confirm {
+  width: 200px; padding: 0.8rem; font-size: 1rem; text-align: center;
+  letter-spacing: 2px;
   border: 1px solid var(--border-color); border-radius: 8px;
   background: var(--white); color: var(--text-dark); outline: none;
 }

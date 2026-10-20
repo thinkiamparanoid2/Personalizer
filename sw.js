@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-center-v5';
+const CACHE_NAME = 'command-center-v6';
 
 const APP_SHELL = [
   '/',
@@ -6,6 +6,7 @@ const APP_SHELL = [
   '/style.css',
   '/script.js',
   '/firebase.js',
+  '/vault-crypto.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
@@ -48,7 +49,8 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    // Navigations like /?addMovie=... should still get the cached shell offline.
+    caches.match(event.request, { ignoreSearch: event.request.mode === 'navigate' }).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
         if (!response || response.status !== 200 || event.request.method !== 'GET') {

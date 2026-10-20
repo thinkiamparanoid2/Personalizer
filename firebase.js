@@ -1,7 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
-// SKELETON CONFIG: Safe for public GitHub upload. 
+// SKELETON CONFIG: Safe for public GitHub upload.
 // Replace these placeholders locally with your actual credentials to test.
 const firebaseConfig = {
   apiKey: "YOUR_FIREBASE_API_KEY",
@@ -14,6 +15,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
 
 // Enable offline persistence — data is cached in IndexedDB so the app
 // works without internet after the first successful load.

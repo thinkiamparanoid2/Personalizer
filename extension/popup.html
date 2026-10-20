@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Personalizer</title>
+  <style>
+    body { width: 320px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; color: #222; }
+    h3 { margin: 0 0 8px; font-size: 14px; color: #8b0000; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+    button { border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-weight: 600; }
+    .primary { background: #8b0000; color: #fff; width: 100%; margin-top: 6px; padding: 8px; }
+    .row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #eee; }
+    .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row small { color: #777; }
+    .muted { color: #777; }
+    section + section { margin-top: 14px; }
+    details summary { cursor: pointer; color: #777; }
+  </style>
+</head>
+<body>
+  <section>
+    <h3>Freeze this window</h3>
+    <input id="bundle-name" placeholder="Bundle name (optional)">
+    <button id="freeze" class="primary">Save &amp; close tabs</button>
+  </section>
+  <section>
+    <h3>Frozen workspaces</h3>
+    <div id="bundles"></div>
+  </section>
+  <section>
+    <details>
+      <summary>Settings</summary>
+      <p class="muted">Personalizer web app URL (for IMDb buttons)</p>
+      <input id="pwa-url" placeholder="https://your-project.web.app/">
+    </details>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>

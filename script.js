@@ -1,15 +1,46 @@
-import { db } from './firebase.js';
+import { db, auth } from './firebase.js';
 import {
-  collection, addDoc, serverTimestamp,
+  collection, addDoc, serverTimestamp, setDoc, deleteField, writeBatch,
   onSnapshot, deleteDoc, doc, updateDoc, getDocs, query, where
 } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+import {
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, sendPasswordResetEmail, sendEmailVerification
+} from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+import {
+  PBKDF2_ITER, rand, toB64, fromB64, newSalt, deriveKek, kekFromBytes,
+  newDek, wrapDek, unwrapDek, encryptJSON, decryptJSON
+} from './vault-crypto.js';
 
 // ==========================================
 // --- GLOBAL STATE ---
 // ==========================================
-let currentUserEmail = null;
-let currentMovieTab  = 'watched'; 
+let currentUser = null;         // Firebase Auth user
+let uid = null;                 // owner id stamped on every document
+let currentMovieTab  = 'watched';
 let deferredPrompt;
+let unsubscribers = [];         // Firestore onSnapshot handles, released on logout
+
+// Vault: the data key lives only in RAM while unlocked.
+let dek = null;
+let keyDoc;                     // undefined = loading, null = no vault yet, else keys/{uid}
+let vaultDocs = [], credDocs = [], chipDocs = [];
+const vaultItems = new Map(), credItems = new Map(), movieItems = new Map(), chipItems = new Map();
+const OWNED_COLLECTIONS = ['vault', 'credentials', 'movies', 'academic', 'shopping'];
+const AUTO_LOCK_MS = 5 * 60 * 1000;
+
+const escapeHTML = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Only http(s) links; blocks javascript:/data: hrefs from stored data.
+function safeUrl(link) {
+  try {
+    const url = new URL(/^https?:\/\//i.test(link) ? link : 'https://' + link);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch { return ''; }
+}
+// For url('...') inside a style attribute.
+const cssUrl = u => escapeHTML(safeUrl(u).replace(/["'()\\]/g, c => '%' + c.charCodeAt(0).toString(16)));
 
 // ==========================================
 // --- PWA CAPTURED ENGINE CHANNELS ---
@@ -60,16 +91,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const pinInput = document.getElementById('vault-pin');
-  if (pinInput) pinInput.addEventListener('keypress', e => { if (e.key === 'Enter') verifyPin(); });
+  ['vault-pin', 'vault-pin-confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keypress', e => { if (e.key === 'Enter') verifyPin(); });
+  });
 
-  const savedUser = localStorage.getItem('loggedInUser');
-  if (savedUser) {
-    currentUserEmail = savedUser;
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('main-dashboard').style.display = 'flex';
-    startListeners();
-  }
+  ['click', 'keydown'].forEach(evt => document.addEventListener(evt, bumpAutoLock));
+});
+
+// Session restore + login/logout UI are driven by Firebase Auth.
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  uid = user ? user.uid : null;
+  if (!user) return showAuthScreen();
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('main-dashboard').style.display = 'flex';
+  await migrateLegacyOwners(user);
+  startListeners();
+  importMovieFromUrl();
 });
 
 // ==========================================
@@ -90,98 +129,99 @@ function switchAuthTab(tab) {
 function showForgotPassword() {
   document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
   document.getElementById('forgot-form').classList.add('active');
-  document.getElementById('recover-section').style.display = 'none';
-  document.getElementById('revealed-password').innerText = '';
   document.getElementById('forgot-email').value = '';
-  document.getElementById('forgot-answer').value = '';
 }
 
+const authErrorText = (e) => ({
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/email-already-in-use': 'Email already exists. Please login.',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/invalid-email': 'Invalid email address.',
+  'auth/too-many-requests': 'Too many attempts. Try again later.',
+  'auth/network-request-failed': 'Network error. Check your connection.'
+}[e.code] || 'Authentication failed.');
+
 async function handleSignup() {
+  const email = document.getElementById('signup-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('signup-password').value;
+  if (!email || !pass) return alert("Please fill all fields.");
   try {
-    const email = document.getElementById('signup-email').value.trim().toLowerCase();
-    const pass  = document.getElementById('signup-password').value;
-    const q     = document.getElementById('signup-question').value;
-    const ans   = document.getElementById('signup-answer').value.trim().toLowerCase();
-    if (!email || !pass || !ans) return alert("Please fill all fields.");
-    showToast("Checking database...");
-    const snapshot = await getDocs(query(collection(db, "users"), where("email", "==", email)));
-    if (!snapshot.empty) return alert("Email already exists. Please login.");
-    await addDoc(collection(db, "users"), { email, password: btoa(pass), question: q, answer: ans });
-    showToast("Account Created! Please login.");
-    switchAuthTab('login');
-  } catch (error) {
-    console.error(error);
-  }
+    showToast("Creating account...");
+    const { user } = await createUserWithEmailAndPassword(auth, email, pass);
+    // Verified email is required to import data saved under the old login system.
+    await sendEmailVerification(user).catch(() => {});
+    showToast("Account created! Verification email sent.");
+  } catch (e) { alert(authErrorText(e)); }
 }
 
 async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('login-password').value;
+  if (!email || !pass) return alert("Enter email and password.");
   try {
-    const email = document.getElementById('login-email').value.trim().toLowerCase();
-    const pass  = document.getElementById('login-password').value;
-    if (!email || !pass) return alert("Enter email and password.");
     showToast("Authenticating...");
-    const snapshot = await getDocs(query(collection(db, "users"), where("email", "==", email)));
-    if (snapshot.empty) return alert("User not found.");
-    const user = snapshot.docs[0].data();
-    if (atob(user.password) === pass) {
-      currentUserEmail = email;
-      localStorage.setItem('loggedInUser', email);
-      document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('main-dashboard').style.display = 'flex';
-      startListeners();
-    } else {
-      alert("Incorrect Password.");
-    }
-  } catch (error) {
-    alert("Database Connection Error.");
-  }
+    await signInWithEmailAndPassword(auth, email, pass);
+  } catch (e) { alert(authErrorText(e)); }
 }
 
-let tempForgotDoc = null;
-async function fetchSecurityQuestion() {
+async function sendResetEmail() {
+  const email = document.getElementById('forgot-email').value.trim().toLowerCase();
+  if (!email) return alert("Enter your email address.");
   try {
-    const email = document.getElementById('forgot-email').value.trim().toLowerCase();
-    if (!email) return alert("Enter your email address.");
-    showToast("Looking up account...");
-    const snapshot = await getDocs(query(collection(db, "users"), where("email", "==", email)));
-    if (snapshot.empty) return alert("No account found with that email.");
-    tempForgotDoc = snapshot.docs[0].data();
-    document.getElementById('recovered-question').innerText = tempForgotDoc.question;
-    document.getElementById('recover-section').style.display = 'block';
-    showToast("Security question loaded!");
-  } catch (err) {
-    alert("Could not reach database.");
-  }
-}
-
-function recoverPassword() {
-  const ans = document.getElementById('forgot-answer').value.trim().toLowerCase();
-  if (!tempForgotDoc) return alert("Please fetch your security question first.");
-  if (ans === tempForgotDoc.answer) {
-    document.getElementById('revealed-password').innerText = "Your password is: " + atob(tempForgotDoc.password);
-  } else {
-    alert("Incorrect answer. Try again.");
-  }
+    await sendPasswordResetEmail(auth, email);
+    showToast("If that account exists, a reset link was sent.");
+    switchAuthTab('login');
+  } catch (e) { alert(authErrorText(e)); }
 }
 
 function handleLogout() {
-  currentUserEmail = null;
-  localStorage.removeItem('loggedInUser');
+  signOut(auth); // onAuthStateChanged -> showAuthScreen()
+}
+
+function showAuthScreen() {
+  stopListeners();
+  keyDoc = undefined;
+  vaultDocs = []; credDocs = []; chipDocs = [];
+  movieItems.clear();
+  lockVault();
   ['vault-data','cred-data','watched-list','plan-to-watch-list','academic-list','shopping-list']
     .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-  const vaultLock = document.getElementById('vault-lock');
-  if (vaultLock) vaultLock.classList.remove('hidden');
   document.getElementById('main-dashboard').style.display = 'none';
   document.getElementById('auth-screen').style.display = 'flex';
   switchAuthTab('login');
 }
 
+// Docs written before Firebase Auth have owner = email; re-stamp them with the uid.
+async function migrateLegacyOwners(user) {
+  if (!user.email || !user.emailVerified) return;
+  try {
+    for (const name of OWNED_COLLECTIONS) {
+      const snap = await getDocs(query(collection(db, name), where("owner", "==", user.email)));
+      if (snap.empty) continue;
+      // ponytail: one batch per collection caps at 500 docs; chunk if a collection ever exceeds that.
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.update(d.ref, { owner: user.uid }));
+      await batch.commit();
+    }
+  } catch (e) { console.warn('Legacy owner migration skipped:', e.code || e); }
+}
+
 function startListeners() {
-  listenToVault();
-  listenToMovies();
-  listenToCredentials();
-  listenToAcademic();
-  listenToShopping();
+  stopListeners();
+  unsubscribers = [
+    listenToKeyDoc(),
+    listenToVault(),
+    listenToChips(),
+    listenToMovies(),
+    listenToCredentials(),
+    listenToAcademic(),
+    listenToShopping()
+  ];
+}
+
+function stopListeners() {
+  unsubscribers.forEach(unsub => unsub());
+  unsubscribers = [];
 }
 
 // ==========================================
@@ -192,11 +232,6 @@ function switchTab(tabId, clickedElement) {
   document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
   document.getElementById(tabId).classList.add('active-tab');
   if (clickedElement) clickedElement.classList.add('active');
-  if (tabId !== 'vault') {
-    document.getElementById('vault-lock').classList.remove('hidden');
-    const pin = document.getElementById('vault-pin');
-    if (pin) pin.value = '';
-  }
   document.getElementById('global-search').value = '';
   filterItems();
 }
@@ -270,7 +305,7 @@ async function saveAcademicEvent() {
   const title = document.getElementById('academicTitle').value.trim();
   const date  = document.getElementById('academicDate').value;
   if (!title || !date) return alert("Enter title and date");
-  await addDoc(collection(db, "academic"), { type, title, date, owner: currentUserEmail, createdAt: serverTimestamp() });
+  await addDoc(collection(db, "academic"), { type, title, date, owner: uid, createdAt: serverTimestamp() });
   toggleModal('add-academic-modal', false);
   showToast("Event Added!");
   document.getElementById('academicTitle').value = '';
@@ -278,23 +313,22 @@ async function saveAcademicEvent() {
 }
 
 function listenToAcademic() {
-  onSnapshot(query(collection(db, "academic"), where("owner", "==", currentUserEmail)), (snapshot) => {
+  return onSnapshot(query(collection(db, "academic"), where("owner", "==", uid)), (snapshot) => {
     const container = document.getElementById('academic-list');
     if (!container) return;
-    container.innerHTML = '';
-    snapshot.forEach(docSnap => {
+    container.innerHTML = snapshot.docs.map(docSnap => {
       const item = docSnap.data();
       const icon = item.type === 'Quiz' ? 'fa-pen-to-square' : item.type === 'Assignment' ? 'fa-file-lines' : 'fa-flask';
-      container.innerHTML += `
-        <div class="academic-card" data-type="${item.type}">
+      return `
+        <div class="academic-card" data-type="${escapeHTML(item.type)}">
           <i class="fa-solid ${icon}"></i>
           <div class="academic-info">
-            <h4>${item.title}</h4>
-            <p>${item.type} &bull; ${item.date}</p>
+            <h4>${escapeHTML(item.title)}</h4>
+            <p>${escapeHTML(item.type)} &bull; ${escapeHTML(item.date)}</p>
           </div>
           <button class="remove-btn" onclick="deleteDocItem('academic','${docSnap.id}')"><i class="fa-solid fa-trash"></i></button>
         </div>`;
-    });
+    }).join('');
   });
 }
 
@@ -309,43 +343,190 @@ function filterAcademic(filterType, btn) {
 // ==========================================
 // --- VAULT SUBSYSTEM BLOCK ---
 // ==========================================
-function unlockVault() { alert("Biometrics initialization failed. Utilize security structural access PIN."); }
-
-function verifyPin() {
-  const pinInput  = document.getElementById('vault-pin');
-  const lockScreen = document.getElementById('vault-lock');
-  const currentPin = localStorage.getItem(`${currentUserEmail}_vaultPin`) || '1234';
-  if (pinInput.value === currentPin) {
-    lockScreen.classList.add('hidden');
-    pinInput.value = '';
-    pinInput.style.borderColor = 'var(--border-color)';
-  } else {
-    pinInput.style.borderColor = 'red';
-    setTimeout(() => pinInput.style.borderColor = 'var(--border-color)', 500);
-  }
+// keys/{uid} = { salt, iter, wrapped } — data key wrapped by the passphrase-derived key.
+function listenToKeyDoc() {
+  return onSnapshot(doc(db, "keys", uid), (snap) => {
+    keyDoc = snap.exists() ? snap.data() : null;
+    updateLockScreen();
+  });
 }
 
-async function handlePinReset() {
-  const pass   = document.getElementById('reset-pin-password').value;
-  const newPin = document.getElementById('new-vault-pin').value;
-  const email  = currentUserEmail || localStorage.getItem('loggedInUser');
-  if (!pass || !newPin) return alert("Please fill all fields.");
-  if (newPin.length !== 4 || isNaN(newPin)) return alert("PIN must be exactly 4 digits.");
-  showToast("Verifying...");
+function updateLockScreen() {
+  const setup = keyDoc === null;
+  document.getElementById('vault-lock-msg').innerText = setup
+    ? 'Create a vault passphrase (8+ characters). It cannot be recovered — remember it.'
+    : 'Enter vault passphrase or use biometrics';
+  document.getElementById('vault-pin-confirm').style.display = setup ? 'block' : 'none';
+  document.getElementById('vault-unlock-btn').innerText = setup ? 'Create' : 'Unlock';
+}
+
+function flashPinError() {
+  const pinInput = document.getElementById('vault-pin');
+  pinInput.style.borderColor = 'red';
+  setTimeout(() => pinInput.style.borderColor = 'var(--border-color)', 500);
+}
+
+async function verifyPin() {
+  const pinInput = document.getElementById('vault-pin');
+  const confirmInput = document.getElementById('vault-pin-confirm');
+  const pass = pinInput.value;
+  if (!pass || keyDoc === undefined) return;
+
+  if (keyDoc === null) {
+    if (pass.length < 8) return alert("Passphrase must be at least 8 characters.");
+    if (pass !== confirmInput.value) return alert("Passphrases do not match.");
+    try {
+      showToast("Creating vault key...");
+      const salt = newSalt();
+      const newKey = await newDek();
+      await setDoc(doc(db, "keys", uid), { salt, iter: PBKDF2_ITER, wrapped: await wrapDek(newKey, await deriveKek(pass, salt)) });
+      dek = newKey;
+    } catch (e) { return alert("Could not create vault key."); }
+  } else {
+    try {
+      showToast("Unlocking...");
+      dek = await unwrapDek(keyDoc.wrapped, await deriveKek(pass, keyDoc.salt, keyDoc.iter));
+    } catch { return flashPinError(); }
+  }
+  pinInput.value = '';
+  confirmInput.value = '';
+  await onVaultUnlocked();
+  offerBiometricEnrollment();
+}
+
+async function onVaultUnlocked() {
+  document.getElementById('vault-lock').classList.add('hidden');
+  bumpAutoLock();
+  encryptLegacyDocs(); // not awaited: offline writes only resolve after sync
+  renderVault();
+  renderChips();
+  renderCredentials();
+}
+
+let autoLockTimer = null;
+function bumpAutoLock() {
+  if (!dek) return;
+  clearTimeout(autoLockTimer);
+  autoLockTimer = setTimeout(lockVault, AUTO_LOCK_MS);
+}
+
+function lockVault() {
+  dek = null;
+  clearTimeout(autoLockTimer);
+  vaultItems.clear();
+  document.getElementById('vault-lock').classList.remove('hidden');
+  renderVault();
+  renderChips();
+  renderCredentials();
+}
+
+// Plaintext docs from before encryption: encrypt in place on first unlock.
+async function encryptLegacyDocs() {
+  const key = dek;
   try {
-    const snapshot = await getDocs(query(collection(db, "users"), where("email", "==", email)));
-    if (snapshot.empty) return alert("Session execution error.");
-    if (atob(snapshot.docs[0].data().password) === pass) {
-      localStorage.setItem(`${email}_vaultPin`, newPin);
-      showToast("PIN Reset Successfully!");
-      toggleModal('reset-pin-modal', false);
-      document.getElementById('reset-pin-password').value = '';
-      document.getElementById('new-vault-pin').value = '';
-    } else { alert("Incorrect Login Password."); }
-  } catch (e) { alert("Error mapping authentication variables."); }
+    for (const d of vaultDocs.filter(d => !d.data().enc)) {
+      const { type = '', title = '', number = '', frontImgUrl = null, backImgUrl = null } = d.data();
+      await updateDoc(d.ref, {
+        enc: await encryptJSON({ type, title, number, frontImgUrl, backImgUrl }, key),
+        type: deleteField(), title: deleteField(), number: deleteField(),
+        frontImgUrl: deleteField(), backImgUrl: deleteField()
+      });
+    }
+    for (const d of credDocs.filter(d => !d.data().enc)) {
+      const { username = '', password = '' } = d.data();
+      await updateDoc(d.ref, {
+        enc: await encryptJSON({ username, password }, key),
+        username: deleteField(), password: deleteField()
+      });
+    }
+  } catch (e) { console.warn('Legacy encryption incomplete:', e.code || e); }
+}
+
+// --- Biometric unlock: WebAuthn PRF yields a per-device secret that wraps the data key. ---
+const PRF_SALT = new TextEncoder().encode('personalizer-vault-prf-v1');
+const prfStorageKey = () => `vaultPrf_${uid}`;
+const loadPrf = () => { try { return JSON.parse(localStorage.getItem(prfStorageKey())); } catch { return null; } };
+
+async function prfSecret(credId) {
+  const assertion = await navigator.credentials.get({ publicKey: {
+    challenge: rand(32),
+    allowCredentials: [{ type: 'public-key', id: credId }],
+    userVerification: 'required',
+    extensions: { prf: { eval: { first: PRF_SALT } } }
+  }});
+  const first = assertion.getClientExtensionResults().prf?.results?.first;
+  if (!first) throw new Error('PRF not supported by this authenticator.');
+  return first;
+}
+
+async function enrollBiometric() {
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: rand(32),
+    rp: { name: 'Command Center' },
+    user: { id: new TextEncoder().encode(uid), name: currentUser.email, displayName: currentUser.email },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    extensions: { prf: {} }
+  }});
+  if (!cred.getClientExtensionResults().prf?.enabled) {
+    throw new Error('This device does not support biometric vault keys (WebAuthn PRF).');
+  }
+  const secret = await prfSecret(cred.rawId);
+  localStorage.setItem(prfStorageKey(), JSON.stringify({
+    credId: toB64(cred.rawId),
+    wrapped: await wrapDek(dek, await kekFromBytes(secret))
+  }));
+}
+
+async function offerBiometricEnrollment() {
+  if (!window.PublicKeyCredential || localStorage.getItem(prfStorageKey())) return;
+  if (!confirm("Enable fingerprint / Windows Hello unlock on this device?")) {
+    localStorage.setItem(prfStorageKey(), JSON.stringify({ declined: true }));
+    return;
+  }
+  try { await enrollBiometric(); showToast("Biometric unlock enabled!"); }
+  catch (e) { alert(e.message || "Biometric setup failed."); }
+}
+
+async function unlockVault() {
+  const saved = loadPrf();
+  if (!window.PublicKeyCredential) return alert("Biometrics are not available in this browser.");
+  if (!saved || !saved.credId) {
+    localStorage.removeItem(prfStorageKey()); // clear a previous "declined"
+    return alert("Unlock with your passphrase once to enable biometrics on this device.");
+  }
+  try {
+    const secret = await prfSecret(fromB64(saved.credId));
+    dek = await unwrapDek(saved.wrapped, await kekFromBytes(secret));
+  } catch (e) { return alert("Biometric unlock failed. Use your passphrase."); }
+  await onVaultUnlocked();
+}
+
+function forgotPassphrase() {
+  alert("The vault passphrase is never stored, so it cannot be reset by email.\n\n" +
+        "If biometrics are enabled on this device, unlock with them, then use \"Change Passphrase\". " +
+        "Otherwise the encrypted vault data cannot be recovered.");
+}
+
+async function changePassphrase() {
+  if (!dek) return alert("Unlock the vault first.");
+  const pass    = document.getElementById('new-vault-pin').value;
+  const confirm = document.getElementById('new-vault-pin-confirm').value;
+  if (pass.length < 8) return alert("Passphrase must be at least 8 characters.");
+  if (pass !== confirm) return alert("Passphrases do not match.");
+  try {
+    showToast("Re-wrapping vault key...");
+    const salt = newSalt();
+    await setDoc(doc(db, "keys", uid), { salt, iter: PBKDF2_ITER, wrapped: await wrapDek(dek, await deriveKek(pass, salt)) });
+    showToast("Passphrase changed!");
+    toggleModal('reset-pin-modal', false);
+    document.getElementById('new-vault-pin').value = '';
+    document.getElementById('new-vault-pin-confirm').value = '';
+  } catch (e) { alert("Could not change passphrase."); }
 }
 
 async function saveNewVaultItem() {
+  if (!dek) return alert("Unlock the vault first.");
   const type      = document.getElementById('vaultType').value;
   const title     = document.getElementById('vaultTitle').value.trim();
   const number    = document.getElementById('vaultNumber').value.trim();
@@ -353,10 +534,11 @@ async function saveNewVaultItem() {
   const backFile  = document.getElementById('vaultBackImage').files[0];
   if (!title) return alert("Please enter a document title.");
   try {
-    showToast("Compressing & securing...");
-    const frontBase64 = frontFile ? await compressImage(frontFile) : null;
-    const backBase64  = backFile  ? await compressImage(backFile)  : null;
-    await addDoc(collection(db, "vault"), { type, title, number, frontImgUrl: frontBase64, backImgUrl: backBase64, owner: currentUserEmail, createdAt: serverTimestamp() });
+    showToast("Compressing & encrypting...");
+    const frontImgUrl = frontFile ? await compressImage(frontFile) : null;
+    const backImgUrl  = backFile  ? await compressImage(backFile)  : null;
+    const enc = await encryptJSON({ type, title, number, frontImgUrl, backImgUrl }, dek);
+    await addDoc(collection(db, "vault"), { enc, owner: uid, createdAt: serverTimestamp() });
     toggleModal('add-vault-modal', false);
     showToast("Item Secured!");
     document.getElementById('vaultTitle').value  = '';
@@ -367,56 +549,119 @@ async function saveNewVaultItem() {
 }
 
 function listenToVault() {
-  onSnapshot(query(collection(db, "vault"), where("owner", "==", currentUserEmail)), (snapshot) => {
-    const container = document.getElementById('vault-data');
-    if (!container) return;
-    container.innerHTML = '';
-    snapshot.forEach(docSnap => {
-      const item = docSnap.data();
-      let iconClass = 'fa-file-shield';
-      if (item.type.includes('NID'))     iconClass = 'fa-id-card';
-      if (item.type.includes('Passport')) iconClass = 'fa-passport';
-      if (item.type.includes('Bank'))    iconClass = 'fa-building-columns';
-      if (item.type.includes('Student')) iconClass = 'fa-id-badge';
-      const fUrl = item.frontImgUrl ? `'${item.frontImgUrl}'` : 'null';
-      const bUrl = item.backImgUrl  ? `'${item.backImgUrl}'`  : 'null';
-      const safeTitle  = item.title.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      const safeNumber = (item.number||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      container.innerHTML += `
-        <div class="vault-card interactive-card" onclick="openDocumentModal('${safeTitle}','${safeNumber}',${fUrl},${bUrl})">
-          <i class="fa-solid ${iconClass}"></i>
-          <h5 style="color:var(--text-gray);font-size:0.8rem;text-transform:uppercase;margin-bottom:5px;">${item.type}</h5>
-          <h4>${item.title}</h4>
-          <p class="hidden-data"><i class="fa-solid fa-microchip" style="color:#d4af37;font-size:1.2rem;vertical-align:middle;margin-right:6px;"></i>${item.number||''}</p>
-          <span class="view-hint">Click to view details</span>
-        </div>`;
-    });
+  return onSnapshot(query(collection(db, "vault"), where("owner", "==", uid)), (snapshot) => {
+    vaultDocs = snapshot.docs;
+    if (dek && vaultDocs.some(d => !d.data().enc)) encryptLegacyDocs();
+    renderVault();
   });
 }
 
-function openDocumentModal(title, number, frontImgUrl = null, backImgUrl = null) {
-  document.getElementById('doc-title').innerText  = title;
-  document.getElementById('doc-number').innerText = number;
+// Decrypted data is rendered only while unlocked and wiped on lock.
+async function renderVault() {
+  const container = document.getElementById('vault-data');
+  if (!container) return;
+  const key = dek;
+  if (!key) { container.innerHTML = ''; return; }
+  const items = await Promise.all(vaultDocs.filter(d => d.data().enc).map(async d => {
+    try { return { id: d.id, ...(await decryptJSON(d.data().enc, key)) }; }
+    catch { return null; }
+  }));
+  if (dek !== key) return; // locked or re-keyed while decrypting
+  vaultItems.clear();
+  container.innerHTML = items.filter(Boolean).map(item => {
+    vaultItems.set(item.id, item);
+    const type = item.type || '';
+    let iconClass = 'fa-file-shield';
+    if (type.includes('NID'))      iconClass = 'fa-id-card';
+    if (type.includes('Passport')) iconClass = 'fa-passport';
+    if (type.includes('Bank'))     iconClass = 'fa-building-columns';
+    if (type.includes('Student'))  iconClass = 'fa-id-badge';
+    return `
+        <div class="vault-card interactive-card" onclick="openDocumentModal('${item.id}')">
+          <i class="fa-solid ${iconClass}"></i>
+          <h5 style="color:var(--text-gray);font-size:0.8rem;text-transform:uppercase;margin-bottom:5px;">${escapeHTML(type)}</h5>
+          <h4>${escapeHTML(item.title)}</h4>
+          <p class="hidden-data"><i class="fa-solid fa-microchip" style="color:#d4af37;font-size:1.2rem;vertical-align:middle;margin-right:6px;"></i>${escapeHTML(item.number)}</p>
+          <span class="view-hint">Click to view details</span>
+        </div>`;
+  }).join('');
+}
+
+// --- Quick-copy identity chips (label + value, both encrypted) ---
+function listenToChips() {
+  return onSnapshot(query(collection(db, "chips"), where("owner", "==", uid)), (snapshot) => {
+    chipDocs = snapshot.docs;
+    renderChips();
+  });
+}
+
+async function renderChips() {
+  const row = document.getElementById('chip-row');
+  if (!row) return;
+  const key = dek;
+  if (!key) { row.innerHTML = ''; chipItems.clear(); return; }
+  const items = await Promise.all(chipDocs.map(async d => {
+    try { return { id: d.id, ...(await decryptJSON(d.data().enc, key)) }; }
+    catch { return null; }
+  }));
+  if (dek !== key) return;
+  chipItems.clear();
+  row.innerHTML = items.filter(Boolean)
+    .sort((a, b) => String(a.label).localeCompare(String(b.label)))
+    .map(c => {
+      chipItems.set(c.id, c);
+      return `<div class="id-chip" onclick="copyChip('${c.id}')" title="Click to copy"><b>${escapeHTML(c.label)}</b><span>${escapeHTML(c.value)}</span><button onclick="event.stopPropagation();deleteDocItem('chips','${c.id}')" aria-label="Remove chip">&times;</button></div>`;
+    }).join('');
+}
+
+function copyChip(id) {
+  const chip = chipItems.get(id);
+  if (chip) copyText(chip.value);
+}
+
+async function saveChip() {
+  if (!dek) return alert("Unlock the vault first.");
+  const label = document.getElementById('chipLabel').value.trim();
+  const value = document.getElementById('chipValue').value.trim();
+  if (!label || !value) return alert("Enter a label and a value.");
+  try {
+    const enc = await encryptJSON({ label, value }, dek);
+    addDoc(collection(db, "chips"), { enc, owner: uid, createdAt: serverTimestamp() }); // not awaited: works offline
+    toggleModal('add-chip-modal', false);
+    showToast("Chip saved!");
+    document.getElementById('chipLabel').value = '';
+    document.getElementById('chipValue').value = '';
+  } catch (e) { alert("Could not save chip."); }
+}
+
+function openDocumentModal(id) {
+  const item = vaultItems.get(id);
+  if (!item) return;
+  document.getElementById('doc-title').innerText  = item.title || '';
+  document.getElementById('doc-number').innerText = item.number || '';
   const fImg = document.getElementById('doc-front-image');
   const fPh  = document.getElementById('front-placeholder-icon');
-  if (frontImgUrl) { fImg.src = frontImgUrl; fImg.style.display = 'block'; fPh.style.display = 'none'; }
-  else             { fImg.style.display = 'none'; fPh.style.display = 'flex'; }
+  if (item.frontImgUrl) { fImg.src = item.frontImgUrl; fImg.style.display = 'block'; fPh.style.display = 'none'; }
+  else                  { fImg.style.display = 'none'; fPh.style.display = 'flex'; }
   const bImg = document.getElementById('doc-back-image');
   const bPh  = document.getElementById('back-placeholder-icon');
-  if (backImgUrl)  { bImg.src = backImgUrl; bImg.style.display = 'block'; bPh.style.display = 'none'; }
-  else             { bImg.style.display = 'none'; bPh.style.display = 'flex'; }
+  if (item.backImgUrl)  { bImg.src = item.backImgUrl; bImg.style.display = 'block'; bPh.style.display = 'none'; }
+  else                  { bImg.style.display = 'none'; bPh.style.display = 'flex'; }
   document.getElementById('document-modal').classList.add('show');
 }
-function closeDocumentModal() { document.getElementById('document-modal').classList.remove('show'); }
+function closeDocumentModal() {
+  document.getElementById('document-modal').classList.remove('show');
+  document.getElementById('doc-front-image').src = '';
+  document.getElementById('doc-back-image').src = '';
+}
 
 // ==========================================
 // --- PLATFORM CREDENTIALS CONTROLLER ---
 // ==========================================
+// Google S2 favicon service (Clearbit's logo API is dead).
 function getLogoFromUrl(link) {
-  try {
-    const url = new URL(link.startsWith('http') ? link : 'https://' + link);
-    return `https://logo.clearbit.com/${url.hostname}`;
-  } catch { return null; }
+  const url = safeUrl(link);
+  return url ? `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128` : null;
 }
 
 function previewCredLogo(val) {
@@ -431,13 +676,14 @@ function previewCredLogo(val) {
 }
 
 async function saveNewCredential() {
+  if (!dek) return alert("Unlock the vault first — credentials are encrypted with the vault key.");
   const platformName = document.getElementById('platformName').value.trim();
   const link         = document.getElementById('platformLink').value.trim();
   const username     = document.getElementById('username').value.trim();
   const password     = document.getElementById('password').value.trim();
   if (!platformName || !username) return alert("Please fill Platform Name and Username");
 
-  const data = { platformName, link, username, password, owner: currentUserEmail, createdAt: serverTimestamp() };
+  const data = { platformName, link, enc: await encryptJSON({ username, password }, dek), owner: uid, createdAt: serverTimestamp() };
   if (link) data.imageUrl = getLogoFromUrl(link);
 
   const fileInput = document.getElementById('platformImage');
@@ -456,52 +702,71 @@ async function saveNewCredential() {
 }
 
 function listenToCredentials() {
-  onSnapshot(query(collection(db, "credentials"), where("owner", "==", currentUserEmail)), (snapshot) => {
-    const container = document.getElementById('cred-data');
-    if (!container) return;
-    container.innerHTML = '';
-    snapshot.forEach(docSnap => {
-      const item = docSnap.data();
+  return onSnapshot(query(collection(db, "credentials"), where("owner", "==", uid)), (snapshot) => {
+    credDocs = snapshot.docs;
+    if (dek && credDocs.some(d => !d.data().enc)) encryptLegacyDocs();
+    renderCredentials();
+  });
+}
 
-      let logoHTML;
-      if (item.imageUrl) {
-        const fallbackSrc = item.link
-          ? (() => { try { return `https://www.google.com/s2/favicons?domain=${new URL(item.link.startsWith('http')?item.link:'https://'+item.link).hostname}&sz=64`; } catch { return ''; } })()
-          : '';
-        const fallbackHandler = fallbackSrc
-          ? `this.src='${fallbackSrc}';this.onerror=function(){this.style.display='none';this.nextElementSibling.style.display='inline-block';};`
-          : `this.style.display='none';this.nextElementSibling.style.display='inline-block';`;
-        logoHTML = `<img src="${item.imageUrl}" alt="logo" class="cred-logo" onerror="${fallbackHandler}"><i class="fa-solid fa-key" style="display:none;font-size:2rem;color:var(--maroon);"></i>`;
-      } else {
-        logoHTML = `<i class="fa-solid fa-key" style="font-size:2rem;color:var(--maroon);"></i>`;
-      }
+async function renderCredentials() {
+  const container = document.getElementById('cred-data');
+  if (!container) return;
+  const key = dek;
+  const items = await Promise.all(credDocs.map(async d => {
+    const data = d.data();
+    let secret = null; // { username, password } when readable
+    if (data.enc && key) { try { secret = await decryptJSON(data.enc, key); } catch {} }
+    else if (!data.enc) secret = { username: data.username, password: data.password }; // legacy, until unlock
+    return { id: d.id, ...data, secret };
+  }));
+  if (dek !== key) return;
+  credItems.clear();
+  container.innerHTML = items.map(item => {
+    credItems.set(item.id, item);
+    let imageUrl = item.imageUrl;
+    if (imageUrl && imageUrl.includes('logo.clearbit.com')) imageUrl = item.link ? getLogoFromUrl(item.link) : null;
+    const logoHTML = imageUrl
+      ? `<img src="${escapeHTML(imageUrl)}" alt="logo" class="cred-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';"><i class="fa-solid fa-key" style="display:none;font-size:2rem;color:var(--maroon);"></i>`
+      : `<i class="fa-solid fa-key" style="font-size:2rem;color:var(--maroon);"></i>`;
 
-      const linkHTML = item.link
-        ? `<a href="${item.link}" target="_blank" rel="noopener" style="font-size:0.8rem;color:var(--text-gray);display:inline-block;margin-top:4px;word-break:break-all;"><i class="fa-solid fa-link"></i> ${item.link.replace(/https?:\/\//,'').substring(0,40)}</a>`
-        : '';
+    const href = item.link ? safeUrl(item.link) : '';
+    const linkHTML = href
+      ? `<a href="${escapeHTML(href)}" target="_blank" rel="noopener" style="font-size:0.8rem;color:var(--text-gray);display:inline-block;margin-top:4px;word-break:break-all;"><i class="fa-solid fa-link"></i> ${escapeHTML(item.link.replace(/https?:\/\//,'').substring(0,40))}</a>`
+      : '';
 
-      container.innerHTML += `
+    const usernameHTML = item.secret
+      ? escapeHTML(item.secret.username)
+      : `<i class="fa-solid fa-lock"></i> Unlock vault to view`;
+    const showCopy = item.secret ? !!item.secret.password : !!item.enc;
+
+    return `
         <div class="cred-card">
           <div class="cred-logo-wrap">${logoHTML}</div>
           <div class="cred-info">
             <div class="cred-title-row">
-              <h4>${item.platformName}</h4>
+              <h4>${escapeHTML(item.platformName)}</h4>
               <div class="cred-menu-wrap">
                 <button class="movie-menu-btn cred-menu-container" onclick="toggleCredMenu(event,this)" style="width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;color:var(--text-gray);">
                   <i class="fa-solid fa-ellipsis-vertical" style="pointer-events:none;font-size:1.2rem;"></i>
                 </button>
                 <div class="cred-dropdown">
-                  <button onclick="event.stopPropagation();deleteDocItem('credentials','${docSnap.id}')"><i class="fa-solid fa-trash" style="color:#d32f2f;margin-right:6px;"></i>Remove</button>
+                  <button onclick="event.stopPropagation();deleteDocItem('credentials','${item.id}')"><i class="fa-solid fa-trash" style="color:#d32f2f;margin-right:6px;"></i>Remove</button>
                 </div>
               </div>
             </div>
             ${linkHTML}
-            <p style="margin-top:6px;font-family:monospace;font-size:0.9rem;">${item.username}</p>
-            ${item.password ? `<button class="copy-btn" style="margin-top:4px;font-size:0.85rem;color:var(--maroon);background:none;border:none;cursor:pointer;padding:0;" onclick="copyText('${item.password.replace(/'/g,"\\'")}')"><i class="fa-regular fa-copy"></i> Copy Password</button>` : ''}
+            <p style="margin-top:6px;font-family:monospace;font-size:0.9rem;">${usernameHTML}</p>
+            ${showCopy ? `<button class="copy-btn" style="margin-top:4px;font-size:0.85rem;color:var(--maroon);background:none;border:none;cursor:pointer;padding:0;" onclick="copyCredPassword('${item.id}')"><i class="fa-regular fa-copy"></i> Copy Password</button>` : ''}
           </div>
         </div>`;
-    });
-  });
+  }).join('');
+}
+
+function copyCredPassword(id) {
+  const item = credItems.get(id);
+  if (!item || !item.secret) return alert("Unlock the vault first.");
+  copyText(item.secret.password);
 }
 
 function toggleCredMenu(event, btn) {
@@ -535,13 +800,15 @@ function filterMedia(type, btn) {
   });
 }
 
-function openMovieModal(title, duration, genre, plot, posterUrl, rating) {
-  document.getElementById('modal-title').innerText = title;
-  document.getElementById('modal-duration').innerHTML = `<i class="fa-regular fa-clock"></i> ${duration}`;
-  document.getElementById('modal-genre').innerHTML   = `<i class="fa-solid fa-film"></i> ${genre}`;
-  document.getElementById('modal-plot-text').innerText = plot;
-  document.getElementById('modal-poster').src = posterUrl;
-  document.getElementById('modal-rating').innerHTML = `<i class="fa-solid fa-star"></i> ${rating}`;
+function openMovieModal(id) {
+  const movie = movieItems.get(id);
+  if (!movie) return;
+  document.getElementById('modal-title').innerText = movie.title || '';
+  document.getElementById('modal-duration').innerHTML = `<i class="fa-regular fa-clock"></i> ${escapeHTML(movie.duration)}`;
+  document.getElementById('modal-genre').innerHTML   = `<i class="fa-solid fa-film"></i> ${escapeHTML(movie.genre)}`;
+  document.getElementById('modal-plot-text').innerText = movie.plot || '';
+  document.getElementById('modal-poster').src = safeUrl(movie.posterUrl || '');
+  document.getElementById('modal-rating').innerHTML = `<i class="fa-solid fa-star"></i> ${escapeHTML(movie.rating)}`;
   document.getElementById('movie-modal').classList.add('show');
 }
 function closeMovieModal() { document.getElementById('movie-modal').classList.remove('show'); }
@@ -593,8 +860,8 @@ async function addNewMovie() {
       posterUrl: data.Poster !== "N/A" ? data.Poster : "https://via.placeholder.com/300x450?text=No+Poster",
       rating: data.imdbRating !== "N/A" ? data.imdbRating : "0.0",
       type: data.Type,
-      status: targetStatus,   
-      owner: currentUserEmail, createdAt: serverTimestamp()
+      status: targetStatus,
+      owner: uid, createdAt: serverTimestamp()
     });
     inputEl.value = '';
     showToast(`Added to ${targetStatus === 'watched' ? 'Watched' : 'Plan to Watch'}!`);
@@ -602,21 +869,21 @@ async function addNewMovie() {
 }
 
 function listenToMovies() {
-  onSnapshot(query(collection(db, "movies"), where("owner", "==", currentUserEmail)), (snapshot) => {
+  return onSnapshot(query(collection(db, "movies"), where("owner", "==", uid)), (snapshot) => {
     const watchedList = document.getElementById('watched-list');
     const planList    = document.getElementById('plan-to-watch-list');
     if (!watchedList || !planList) return;
-    watchedList.innerHTML = ''; planList.innerHTML = '';
+    const watchedHTML = [], planHTML = [];
+    movieItems.clear();
     snapshot.forEach(docSnap => {
       const movie = docSnap.data();
-      const safeTitle = movie.title.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      const safePlot  = (movie.plot||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      movieItems.set(docSnap.id, movie);
       const badgeColor = movie.type === 'series' ? '#0a66c2' : 'var(--maroon)';
       const badge      = movie.type === 'series' ? 'Series' : 'Movie';
       const html = `
-        <div class="movie-card" data-media-type="${movie.type}" onclick="openMovieModal('${safeTitle}','${movie.duration}','${movie.genre}','${safePlot}','${movie.posterUrl}','${movie.rating}')">
-          <div class="movie-poster" style="background-image:url('${movie.posterUrl}')">
-            <div class="rating" style="left:10px;"><i class="fa-solid fa-star"></i> ${movie.rating}</div>
+        <div class="movie-card" data-media-type="${escapeHTML(movie.type)}" onclick="openMovieModal('${docSnap.id}')">
+          <div class="movie-poster" style="background-image:url('${cssUrl(movie.posterUrl || '')}')">
+            <div class="rating" style="left:10px;"><i class="fa-solid fa-star"></i> ${escapeHTML(movie.rating)}</div>
             <div class="rating" style="right:10px;left:auto;background:${badgeColor};font-size:0.75rem;">${badge}</div>
             <div class="movie-menu-container" style="top:40px;right:10px;">
               <button class="movie-menu-btn" onclick="toggleMovieMenu(event,this)"><i class="fa-solid fa-ellipsis-vertical"></i></button>
@@ -627,12 +894,45 @@ function listenToMovies() {
               </div>
             </div>
           </div>
-          <div class="movie-info"><h4>${movie.title}</h4><p>${(movie.genre||'').split(',')[0]}</p></div>
+          <div class="movie-info"><h4>${escapeHTML(movie.title)}</h4><p>${escapeHTML((movie.genre||'').split(',')[0])}</p></div>
         </div>`;
-      if (movie.status === 'watched') watchedList.innerHTML += html;
-      else planList.innerHTML += html;
+      (movie.status === 'watched' ? watchedHTML : planHTML).push(html);
     });
+    watchedList.innerHTML = watchedHTML.join('');
+    planList.innerHTML    = planHTML.join('');
   });
+}
+
+// The browser extension hands IMDb JSON-LD over as ?addMovie=<json> (no OMDB key needed).
+async function importMovieFromUrl() {
+  const raw = new URLSearchParams(location.search).get('addMovie');
+  if (!raw) return;
+  history.replaceState(null, '', location.pathname);
+  let m;
+  try { m = JSON.parse(raw); } catch { return; }
+  if (!/^tt\d+$/.test(m.imdbId || '')) return;
+  const str = v => String(v ?? '').slice(0, 2000);
+  const status = m.status === 'watched' ? 'watched' : 'plan-to-watch';
+  let posterUrl = safeUrl(str(m.posterUrl));
+  try { if (!new URL(posterUrl).hostname.endsWith('media-amazon.com')) posterUrl = ''; } catch { posterUrl = ''; }
+
+  switchTab('movies', document.querySelector('.nav-links li[onclick*="movies"]'));
+  switchMovieTab(status, document.querySelectorAll('#movie-status-tabs .m-tab')[status === 'watched' ? 0 : 1]);
+  try {
+    const existing = await getDocs(query(collection(db, "movies"), where("owner", "==", uid), where("imdbId", "==", m.imdbId)));
+    if (!existing.empty) {
+      updateDoc(existing.docs[0].ref, { status });
+    } else {
+      addDoc(collection(db, "movies"), {
+        imdbId: m.imdbId, title: str(m.title), duration: str(m.duration), genre: str(m.genre),
+        plot: str(m.plot), posterUrl, rating: str(m.rating) || '0.0',
+        type: m.type === 'series' ? 'series' : 'movie',
+        status, owner: uid, createdAt: serverTimestamp()
+      });
+    }
+    showToast(`${str(m.title)} → ${status === 'watched' ? 'Watched' : 'Plan to Watch'}`);
+    setTimeout(() => window.close(), 1500); // only closes tabs the extension opened
+  } catch (e) { alert("Could not add movie."); }
 }
 
 async function moveMovie(event, movieId, newStatus) {
@@ -649,7 +949,7 @@ async function saveShoppingItem() {
   const link  = document.getElementById('shopping-link').value.trim();
   const price = document.getElementById('shopping-price').value.trim();
   if (!desc) return alert("Please enter an item description.");
-  await addDoc(collection(db, "shopping"), { desc, link, price, bought: false, owner: currentUserEmail, createdAt: serverTimestamp() });
+  await addDoc(collection(db, "shopping"), { desc, link, price, bought: false, owner: uid, createdAt: serverTimestamp() });
   toggleModal('add-shopping-modal', false);
   showToast("Item Added!");
   document.getElementById('shopping-desc').value  = '';
@@ -658,28 +958,29 @@ async function saveShoppingItem() {
 }
 
 function listenToShopping() {
-  onSnapshot(query(collection(db, "shopping"), where("owner", "==", currentUserEmail)), (snapshot) => {
+  return onSnapshot(query(collection(db, "shopping"), where("owner", "==", uid)), (snapshot) => {
     const container = document.getElementById('shopping-list');
     if (!container) return;
-    container.innerHTML = '';
-    snapshot.forEach(docSnap => {
+    container.innerHTML = snapshot.docs.map(docSnap => {
       const item = docSnap.data();
-      const linkHTML = item.link
-        ? `<a href="${item.link}" target="_blank" rel="noopener" class="shop-link"><i class="fa-solid fa-arrow-up-right-from-square"></i> View Product</a>`
+      const bought = item.bought === true;
+      const href = item.link ? safeUrl(item.link) : '';
+      const linkHTML = href
+        ? `<a href="${escapeHTML(href)}" target="_blank" rel="noopener" class="shop-link"><i class="fa-solid fa-arrow-up-right-from-square"></i> View Product</a>`
         : '';
-      const priceHTML = item.price ? `<span class="shop-price"><i class="fa-solid fa-tag"></i> ${item.price}</span>` : '';
-      container.innerHTML += `
-        <div class="shopping-card ${item.bought ? 'bought' : ''}" data-bought="${item.bought}">
-          <button class="shop-check-btn" onclick="toggleBought('${docSnap.id}',${item.bought})" title="${item.bought ? 'Mark pending' : 'Mark bought'}">
-            <i class="fa-solid ${item.bought ? 'fa-check-circle' : 'fa-circle'}"></i>
+      const priceHTML = item.price ? `<span class="shop-price"><i class="fa-solid fa-tag"></i> ${escapeHTML(item.price)}</span>` : '';
+      return `
+        <div class="shopping-card ${bought ? 'bought' : ''}" data-bought="${bought}">
+          <button class="shop-check-btn" onclick="toggleBought('${docSnap.id}',${bought})" title="${bought ? 'Mark pending' : 'Mark bought'}">
+            <i class="fa-solid ${bought ? 'fa-check-circle' : 'fa-circle'}"></i>
           </button>
           <div class="shop-info">
-            <p class="shop-desc">${item.desc}</p>
+            <p class="shop-desc">${escapeHTML(item.desc)}</p>
             <div class="shop-meta">${priceHTML}${linkHTML}</div>
           </div>
           <button class="remove-btn" onclick="deleteDocItem('shopping','${docSnap.id}')"><i class="fa-solid fa-trash"></i></button>
         </div>`;
-    });
+    }).join('');
   });
 }
 
@@ -717,8 +1018,7 @@ window.switchAuthTab       = switchAuthTab;
 window.showForgotPassword  = showForgotPassword;
 window.handleSignup        = handleSignup;
 window.handleLogin         = handleLogin;
-window.fetchSecurityQuestion = fetchSecurityQuestion;
-window.recoverPassword     = recoverPassword;
+window.sendResetEmail      = sendResetEmail;
 window.handleLogout        = handleLogout;
 window.switchTab           = switchTab;
 window.filterItems         = filterItems;
@@ -726,13 +1026,17 @@ window.copyText            = copyText;
 window.toggleModal         = toggleModal;
 window.unlockVault         = unlockVault;
 window.verifyPin           = verifyPin;
-window.handlePinReset      = handlePinReset;
+window.changePassphrase    = changePassphrase;
+window.forgotPassphrase    = forgotPassphrase;
 window.saveNewVaultItem    = saveNewVaultItem;
 window.openDocumentModal   = openDocumentModal;
 window.closeDocumentModal  = closeDocumentModal;
 window.previewCredLogo     = previewCredLogo;
 window.saveNewCredential   = saveNewCredential;
 window.toggleCredMenu      = toggleCredMenu;
+window.copyCredPassword    = copyCredPassword;
+window.copyChip            = copyChip;
+window.saveChip            = saveChip;
 window.switchMovieTab      = switchMovieTab;
 window.filterMedia         = filterMedia;
 window.openMovieModal      = openMovieModal;
