@@ -46,6 +46,7 @@ function setStatus(ok) {
 }
 
 let initialized = false;
+let lastAgentError = '';
 async function pcInit() {
   const { url, token } = agent();
   $('agent-url').value = url;
@@ -54,7 +55,15 @@ async function pcInit() {
   try {
     await api('/api/jobs');
     setStatus(true);
-  } catch { setStatus(false); return; }
+  } catch (e) {
+    setStatus(false);
+    // fetch() throws TypeError when nothing answers; HTTP errors carry the status code.
+    lastAgentError = e instanceof TypeError
+      ? 'Agent not reachable: is it running? (Brave may also need "local network/localhost access" allowed for this site.)'
+      : e.message.startsWith('401') ? 'Wrong token: paste the "token" value from agent/config.json (without quotes).'
+      : e.message;
+    return;
+  }
   if (initialized) return;
   initialized = true;
   pcLoadAudio().catch(() => {});
@@ -66,12 +75,15 @@ async function pcInit() {
 async function pcSaveSettings() {
   try {
     localStorage.setItem('agentUrl', $('agent-url').value.trim());
-    localStorage.setItem('agentToken', $('agent-token').value.trim());
+    // Tolerate pasting the whole JSON line: "token": "abc...",
+    const token = $('agent-token').value.trim().replace(/^"?token"?\s*:\s*/, '').replace(/^["']|["'],?$/g, '');
+    localStorage.setItem('agentToken', token);
   } catch { return alert('Could not save settings in this browser.'); }
   toggleModal('agent-settings-modal', false);
   initialized = false;
   await pcInit();
-  toast(document.querySelector('#pc-status.ok') ? 'Agent connected!' : 'Agent not reachable');
+  if (document.querySelector('#pc-status.ok')) toast('Agent connected!');
+  else alert(lastAgentError);
 }
 
 // ---------- Remote ----------
