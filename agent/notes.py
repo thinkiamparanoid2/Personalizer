@@ -183,6 +183,78 @@ def _write(out_dir, md):
     return path
 
 
+# ---------- library (the web app's Study Notes tab and Farvis) ----------
+def notes_root():
+    return Path(config.load()["notes_dir"])
+
+
+def _note_dir(note_id, root=None):
+    """Folder of one note; rejects ids that try to leave the notes folder."""
+    root = (root or notes_root()).resolve()
+    d = (root / note_id).resolve()
+    if d.parent != root or not (d / "notes.md").is_file():
+        raise FileNotFoundError(f"No study notes '{note_id}'")
+    return d
+
+
+def _meta(d):
+    head = (d / "notes.md").read_text(encoding="utf-8", errors="replace")[:4000]
+    title = next((ln[2:].strip() for ln in head.splitlines() if ln.startswith("# ")), d.name)
+    source = next((ln[len("> Source:"):].strip() for ln in head.splitlines() if ln.startswith("> Source:")), "")
+    frames = d / "frames"
+    return {"id": d.name, "title": title, "source": source, "created": int((d / "notes.md").stat().st_mtime),
+            "slides": len(list(frames.glob("*.jpg"))) if frames.is_dir() else 0}
+
+
+def list_notes(root=None):
+    root = root or notes_root()
+    if not root.is_dir():
+        return {"available": False, "folder": str(root), "notes": []}
+    notes = [_meta(d) for d in root.iterdir() if (d / "notes.md").is_file()]
+    return {"available": True, "folder": str(root), "notes": sorted(notes, key=lambda n: n["created"], reverse=True)}
+
+
+def get_note(note_id, sign=None, root=None):
+    """Markdown with slide links rewritten to signed /api/notes/frame URLs (img tags can't send a token)."""
+    d = _note_dir(note_id, root)
+    md = (d / "notes.md").read_text(encoding="utf-8", errors="replace")
+    if sign:
+        md = re.sub(r"\]\(frames/([\w.-]+\.jpg)\)", lambda m: f"]({sign(note_id, m.group(1))})", md)
+    return {**_meta(d), "markdown": md, "path": str(d / "notes.md")}
+
+
+def frame_path(note_id, name, root=None):
+    if not re.fullmatch(r"[\w.-]+\.jpg", name):
+        raise FileNotFoundError(name)
+    p = _note_dir(note_id, root) / "frames" / name
+    if not p.is_file():
+        raise FileNotFoundError(name)
+    return p
+
+
+def delete_note(note_id, root=None):
+    """Send the note's folder to the Recycle Bin (recoverable), not a permanent delete."""
+    from win32com.shell import shell, shellcon
+    d = _note_dir(note_id, root)
+    flags = shellcon.FOF_ALLOWUNDO | shellcon.FOF_NOCONFIRMATION | shellcon.FOF_SILENT | shellcon.FOF_NOERRORUI
+    code, aborted = shell.SHFileOperation((0, shellcon.FO_DELETE, str(d), None, flags, None, None))
+    if code or aborted:
+        raise RuntimeError(f"Could not move notes to the Recycle Bin (code {code})")
+    return {"recycled": d.name}
+
+
+def search_notes(query, root=None):
+    """Best match for Farvis: title words first, then full-text hits."""
+    q = [w for w in re.findall(r"\w+", (query or "").lower()) if len(w) > 2]
+    best, best_score = None, 0
+    for n in list_notes(root)["notes"]:
+        text = (Path(root or notes_root()) / n["id"] / "notes.md").read_text(encoding="utf-8", errors="replace").lower()
+        score = sum(5 * (w in n["title"].lower()) + min(text.count(w), 5) for w in q)
+        if score > best_score:
+            best, best_score = n, score
+    return best
+
+
 # ---------- entry points ----------
 def notes_from_url(job, url, force_whisper=False, frames=True):
     import yt_dlp
@@ -263,7 +335,38 @@ last line
     assert paragraphs([(0, "a"), (31, "b"), (40, "c")]) == ["[00:00] a b", "[00:40] c"]
     link = _youtube_link("https://www.youtube.com/watch?v=abc&t=5s")
     assert link(90) == "https://www.youtube.com/watch?v=abc&t=90s", link(90)
+    _library_check()
     print("notes self-check OK")
+
+
+def _library_check():
+    import tempfile
+    root = Path(tempfile.mkdtemp())
+    assert list_notes(root / "missing")["available"] is False
+    d = root / "Deadlocks"
+    (d / "frames").mkdir(parents=True)
+    (d / "frames" / "01-05.jpg").write_bytes(b"x")
+    (d / "notes.md").write_text("> Source: https://youtu.be/x\n\n# Deadlocks in OS\n\nCoffman conditions. "
+                                "![slide](frames/01-05.jpg)\n", encoding="utf-8")
+    lst = list_notes(root)
+    assert lst["available"] and lst["notes"][0]["title"] == "Deadlocks in OS" and lst["notes"][0]["slides"] == 1
+    note = get_note("Deadlocks", sign=lambda i, n: f"/api/notes/frame?id={i}&name={n}", root=root)
+    assert "](/api/notes/frame?id=Deadlocks&name=01-05.jpg)" in note["markdown"], note["markdown"]
+    assert frame_path("Deadlocks", "01-05.jpg", root).is_file()
+    for bad in ("..", "../x", "Deadlocks/../.."):
+        try:
+            get_note(bad, root=root)
+            raise AssertionError(f"accepted {bad}")
+        except FileNotFoundError:
+            pass
+    for bad in ("../notes.md", "x.png", "..\\a.jpg"):
+        try:
+            frame_path("Deadlocks", bad, root)
+            raise AssertionError(f"accepted frame {bad}")
+        except FileNotFoundError:
+            pass
+    assert search_notes("coffman conditions deadlock", root)["id"] == "Deadlocks"
+    assert search_notes("photosynthesis", root) is None
 
 
 if __name__ == "__main__":

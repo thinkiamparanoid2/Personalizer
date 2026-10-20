@@ -726,3 +726,50 @@ h1, h2, h3, .section-title, .brand { font-family: 'Space Grotesk', 'Inter', sans
 .icon-btn { background: none !important; border: none !important; color: var(--text-gray) !important; cursor: pointer;
   min-height: 0 !important; padding: 2px 6px !important; }
 .icon-btn:hover { color: #ef4444 !important; }
+
+/* Study notes */
+.notes-gen { display: flex; gap: 8px; flex: 1; max-width: 520px; }
+.notes-gen input { flex: 1; min-width: 0; padding: 0.6rem 0.9rem; border-radius: 12px; border: 1px solid var(--input-border);
+  background: var(--white); color: var(--text-dark); outline: none; }
+.notes-gen input:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px var(--accent-glow); }
+.note-job { margin-bottom: 10px; padding: 10px 14px; border-radius: 12px; background: var(--accent-glow); color: var(--text-dark); font-size: 0.9rem; }
+.notes-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 1.2rem; align-items: start; }
+.notes-side { position: sticky; top: 0; max-height: calc(100vh - 200px); overflow-y: auto; }
+.note-item { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px;
+  border-radius: 14px; border: 1px solid var(--border-color); background: var(--white); color: var(--text-dark); cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s; }
+.note-item:hover { border-color: var(--accent-glow); }
+.note-item.active { border-color: var(--maroon); box-shadow: 0 0 0 3px var(--accent-glow); }
+.note-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.notes-reader { background: var(--white); border: 1px solid var(--border-color); border-radius: 18px; box-shadow: var(--card-shadow);
+  padding: 1.5rem 2rem 2rem; min-height: 300px; min-width: 0; color: var(--text-dark); }
+.note-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); }
+.note-toolbar .spacer { flex: 1; }
+.note-toolbar a { color: var(--maroon); font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+.note-toolbar button { background: var(--border-color); color: var(--text-dark); border: 1px solid var(--border-color); border-radius: 10px;
+  padding: 6px 10px; cursor: pointer; font-size: 0.85rem; }
+.note-toolbar button:hover { background: var(--maroon); color: var(--on-accent); }
+.notes-empty { text-align: center; padding: 3rem 1rem; color: var(--text-gray); }
+.notes-empty i { font-size: 2.5rem; color: var(--maroon); margin-bottom: 1rem; }
+.md { line-height: 1.75; font-size: 1rem; }
+.md h1 { font-size: 1.9rem; margin: 0.8rem 0 1rem; }
+.md h2 { font-size: 1.4rem; margin: 2rem 0 0.8rem; padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
+.md h3 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md table { margin-bottom: 1rem; }
+.md ul, .md ol { padding-left: 1.4rem; }
+.md li { margin-bottom: 0.3rem; }
+.md a { color: var(--maroon); text-decoration: none; font-weight: 500; }
+.md a:hover { text-decoration: underline; }
+.md code { background: var(--border-color); padding: 2px 6px; border-radius: 6px; font-size: 0.9em; }
+.md pre { background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md img { max-width: 100%; border-radius: 12px; border: 1px solid var(--border-color); margin: 0.5rem 0; }
+.md blockquote { border-left: 3px solid var(--maroon); padding-left: 1rem; color: var(--text-gray); }
+.md table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--border-color); padding: 6px 10px; }
+.md .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+@media (max-width: 1100px) {
+  .notes-layout { grid-template-columns: minmax(0, 1fr); }
+  .notes-side { position: static; max-height: 260px; }
+  .notes-reader { padding: 1.2rem; }
+}

@@ -45,6 +45,10 @@ SERVER_TOOLS = [
     _fn("cancel_reminder", "Cancel a custom reminder by its id (get ids from list_reminders).",
         {"id": {"type": "string"}}, ["id"]),
     _fn("get_briefing", "Today's briefing: deadlines today and this week, reminders, shopping, weather."),
+    _fn("list_study_notes", "List the user's generated lecture study notes (titles and sources)."),
+    _fn("read_study_notes", "Read the full Markdown of the study notes that best match a topic or title, "
+                            "to answer questions about a lecture.",
+        {"query": {"type": "string", "description": "Lecture title or topic words"}}, ["query"]),
 ]
 
 CLIENT_TOOLS = [
@@ -108,6 +112,16 @@ def _run_server_tool(name, args):
         if name == "get_briefing":
             title, body = reminders.brief()
             return {"briefing": f"{title}. {body}"}
+        if name == "list_study_notes":
+            lst = notes.list_notes()
+            return {"available": lst["available"], "notes": [{"title": n["title"], "source": n["source"]}
+                                                             for n in lst["notes"][:50]]}
+        if name == "read_study_notes":
+            best = notes.search_notes(args.get("query"))
+            if not best:
+                return {"error": "no matching study notes"}
+            md = notes.get_note(best["id"])["markdown"]
+            return {"title": best["title"], "markdown": md[:30000], "truncated": len(md) > 30000}
         if name == "check_jobs":
             return {"jobs": [{"kind": j["kind"], "status": j["status"], "progress": j["progress"],
                               "title": (j.get("result") or {}).get("title"), "error": j["error"]}

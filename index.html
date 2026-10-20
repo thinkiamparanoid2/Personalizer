@@ -71,6 +71,7 @@
         <li class="active" onclick="switchTab('home',this)"><i class="fa-solid fa-house"></i> Home</li>
         <li onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
         <li onclick="switchTab('academic',this)"><i class="fa-solid fa-graduation-cap"></i> Academic Planner</li>
+        <li onclick="switchTab('notes',this);notesInit()"><i class="fa-solid fa-book-open"></i> Study Notes</li>
         <li onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
         <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> Media Tracker</li>
         <li onclick="switchTab('shopping',this)"><i class="fa-solid fa-cart-shopping"></i> Shopping List</li>
@@ -193,6 +194,25 @@
           <button class="m-tab" onclick="filterAcademic('Lab Test',this)">Lab Tests</button>
         </div>
         <div class="academic-grid" id="academic-list"></div>
+      </section>
+
+      <section id="notes" class="tab-content fade-in">
+        <div class="section-header">
+          <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Study Notes</h1>
+          <form class="notes-gen" onsubmit="event.preventDefault(); notesGenerate()">
+            <input id="notes-url" placeholder="Paste a lecture video URL" autocomplete="off">
+            <button class="add-btn" type="submit"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button>
+          </form>
+        </div>
+        <div id="notes-jobs"></div>
+        <div class="notes-layout">
+          <aside class="notes-side">
+            <div class="search-container" style="width:100%;margin-bottom:10px;"><i class="fa-solid fa-search"></i>
+              <input id="notes-search" placeholder="Search notes" oninput="notesFilter()"></div>
+            <div id="notes-list"></div>
+          </aside>
+          <article id="notes-reader" class="notes-reader"></article>
+        </div>
       </section>
 
       <section id="credentials" class="tab-content fade-in">
@@ -502,6 +522,7 @@
   <script type="module" src="script.js"></script>
   <script type="module" src="pc.js"></script>
   <script type="module" src="farvis.js"></script>
+  <script type="module" src="notes.js"></script>
   <script>
     if('serviceWorker' in navigator){
       window.addEventListener('load',()=>{

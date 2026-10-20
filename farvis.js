@@ -295,5 +295,6 @@ document.addEventListener('keydown', e => {
 
 Object.assign(window, {
   farvisAsk: ask, farvisSend: sendFrom, farvisVoice: voice, farvisToggle: toggleDrawer,
-  farvisClose: closeDrawer, farvisNewChat: newChat, farvisCancelReminder: cancelReminder, farvisBrief: briefMe
+  farvisClose: closeDrawer, farvisNewChat: newChat,
+  farvisPrefill: text => { openDrawer(); $('chat-input').value = text; $('chat-input').focus(); }, farvisCancelReminder: cancelReminder, farvisBrief: briefMe
 });

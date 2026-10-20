@@ -359,6 +359,33 @@ def reveal(body: PathBody):
     return {"revealed": str(real)}
 
 
+# ---------- Study notes library ----------
+def _sign_frame(note_id, name):
+    exp = int(time.time()) + signing.TTL
+    target = f"notes:{note_id}/{name}"
+    return "/api/notes/frame?" + urlencode({"id": note_id, "name": name, "exp": exp,
+                                            "sig": signing.sign(target, exp, STREAM_SECRET)})
+
+
+@api.get("/notes/list")
+def notes_list():
+    return notes.list_notes()
+
+
+@api.get("/notes/get")
+def notes_get(id: str):
+    return notes.get_note(id, sign=_sign_frame)
+
+
+class NoteId(BaseModel):
+    id: str
+
+
+@api.post("/notes/delete")
+def notes_delete(body: NoteId):
+    return notes.delete_note(body.id)
+
+
 @api.get("/jobs")
 def job_list():
     return jobs.recent()
@@ -444,6 +471,14 @@ def stream_compat(request: Request, path: str, exp: int | None = None, sig: str 
                 proc.kill()
 
     return StreamingResponse(chunks(), media_type="video/mp4")
+
+
+@app.get("/api/notes/frame")
+def notes_frame(id: str, name: str, exp: int, sig: str):
+    """Slide image inside a note (signed URL: <img> tags can't send the token)."""
+    if not signing.verify(f"notes:{id}/{name}", exp, sig, STREAM_SECRET):
+        raise _unauthorized()
+    return FileResponse(notes.frame_path(id, name), media_type="image/jpeg")
 
 
 # Outside the Bearer-only router: <video src> and vlc:// can't send headers, so a signed URL also works.

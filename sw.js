@@ -9,6 +9,7 @@ const APP_SHELL = [
   './vault-crypto.js',
   './pc.js',
   './farvis.js',
+  './notes.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
