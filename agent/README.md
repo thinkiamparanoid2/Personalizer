@@ -17,17 +17,22 @@ First run writes `agent/config.json` (gitignored) with a random token. Edit it, 
 | key | meaning |
 |---|---|
 | `token` | Clients send `Authorization: Bearer <token>` on every `/api/*` call. Delete the file to rotate. |
+| `stream_secret` | HMAC key for signed stream URLs (added automatically if missing). Change it to revoke all outstanding links. |
 | `host` / `port` | `127.0.0.1:8765`. Non-loopback hosts are refused. |
 | `allowed_hosts` | Accepted `Host` headers (DNS-rebinding guard; others get 400). Add your MagicDNS name (`pc.tailnet.ts.net`) if not auto-detected. |
 | `cors_origins` | Exact origins, e.g. `https://<project>.web.app`, `chrome-extension://<extension-id>`. |
 | `roots` | Folders `/api/stream` may serve from (e.g. `D:\\MOvies`). Symlinks/`..` out of them are rejected. |
 
-Path self-check: `python -m agent.paths`.
+Self-checks: `python -m agent.paths`, `python -m agent.signing`.
 
 ## Endpoints
 
 - `POST /api/media` `{"action": "volume_up|volume_down|mute|play_pause|next|prev"}`
-- `GET /api/stream?path=D:\MOvies\x.mp4` - supports `Range` (206) for seeking.
+- `GET /api/stream?path=D:\MOvies\x.mp4` - supports `Range` (206) for seeking. Needs the Bearer header **or** a valid `exp`+`sig` from `/api/stream-link`.
+- `POST /api/stream-link` `{"path": "D:\\MOvies\\x.mp4"}` -> `{"url": "/api/stream?path=...&exp=<unix>&sig=<hmac>", "exp": <unix>}`.
+  For `<video src>` and `vlc://`, which can't send headers. `sig` = HMAC-SHA256(`stream_secret`, `<path>\n<exp>`); valid 6h, for that one file only.
+  Prefix the agent origin: `https://<pc>.<tailnet>.ts.net/api/stream?...`, or `vlc://https://<pc>.<tailnet>.ts.net/api/stream?...`.
+  The URL grants access to that file until `exp`, so don't share or log it.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" -X POST -H "Content-Type: application/json" -d '{"action":"play_pause"}' http://127.0.0.1:8765/api/media
