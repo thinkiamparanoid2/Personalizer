@@ -1,34 +1,49 @@
+/* JARVIS theme tokens. --maroon is the historical name of the accent colour (now cyan). */
 :root {
-  --maroon: #800000;
-  --maroon-light: #a52a2a;
+  --maroon: #0891b2;
+  --maroon-light: #6366f1;
+  --accent-2: #7c3aed;
+  --on-accent: #ffffff;
+  --accent-glow: rgba(8, 145, 178, 0.25);
   --white: #ffffff;
-  --bg-light: #f4f4f9;
-  --text-dark: #333333;
-  --text-gray: #666666;
-  --border-color: rgba(128, 0, 0, 0.1);
-  --glass-bg: rgba(255, 255, 255, 0.7);
+  --bg-light: #f3f6fb;
+  --text-dark: #0f172a;
+  --text-gray: #5b6b82;
+  --border-color: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.75);
   --modal-bg: #ffffff;
-  --input-border: rgba(128, 0, 0, 0.2);
+  --input-border: rgba(15, 23, 42, 0.14);
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --sidebar-bg: rgba(255, 255, 255, 0.8);
+  --page-glow-1: rgba(8, 145, 178, 0.10);
+  --page-glow-2: rgba(124, 58, 237, 0.08);
 }
 
 [data-theme="dark"] {
-  --bg-light: #0f0f11;
-  --white: #1a1a1c;
-  --text-dark: #f0f0f0;
-  --text-gray: #a0a0a0;
-  --maroon: #d32f2f;
-  --maroon-light: #800000;
-  --border-color: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(26, 26, 28, 0.7);
-  --modal-bg: #1a1a1c;
-  --input-border: rgba(255, 255, 255, 0.2);
+  --maroon: #22d3ee;
+  --maroon-light: #818cf8;
+  --accent-2: #a78bfa;
+  --on-accent: #04131a;
+  --accent-glow: rgba(34, 211, 238, 0.28);
+  --bg-light: #070b14;
+  --white: #0e1524;
+  --text-dark: #e6edf7;
+  --text-gray: #8b9bb4;
+  --border-color: rgba(148, 163, 184, 0.12);
+  --glass-bg: rgba(7, 11, 20, 0.78);
+  --modal-bg: #0f1828;
+  --input-border: rgba(148, 163, 184, 0.22);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --sidebar-bg: rgba(9, 14, 25, 0.82);
+  --page-glow-1: rgba(34, 211, 238, 0.10);
+  --page-glow-2: rgba(167, 139, 250, 0.09);
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
@@ -503,3 +518,131 @@ body {
 .shop-link { font-size: 0.85rem; color: var(--maroon); text-decoration: none; font-weight: 600; }
 .shop-link:hover { text-decoration: underline; }
 .shop-link i { margin-right: 4px; }
+
+/* ==========================================================================
+   JARVIS skin: layout polish on top of the component rules above
+   ========================================================================== */
+body {
+  background:
+    radial-gradient(1100px 600px at 85% -10%, var(--page-glow-1), transparent 60%),
+    radial-gradient(900px 520px at -10% 110%, var(--page-glow-2), transparent 60%),
+    var(--bg-light);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+.dashboard-container { box-shadow: none; max-width: 1480px; }
+.content-area { background: transparent; }
+h1, h2, h3, .section-title, .brand { font-family: 'Space Grotesk', 'Inter', sans-serif; letter-spacing: -0.01em; }
+
+/* Sidebar */
+.sidebar {
+  background: var(--sidebar-bg);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-right: 1px solid var(--border-color);
+  padding: 1.75rem 1.25rem;
+}
+.profile-section { margin-bottom: 2.25rem; }
+.brand-logo { width: 64px; height: 64px; border-radius: 18px; display: block; margin: 0 auto 0.9rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 30px var(--accent-glow); }
+.brand { font-size: 1.55rem; font-weight: 700; letter-spacing: 0.22em; color: var(--text-dark); }
+.brand-sub { color: var(--text-gray); font-size: 0.78rem; margin-top: 0.25rem; letter-spacing: 0.04em; }
+.nav-links li {
+  position: relative; padding: 0.8rem 1rem; margin-bottom: 0.3rem; border-radius: 12px; font-weight: 500;
+}
+.nav-links li:hover { background: var(--border-color); color: var(--text-dark); transform: none; }
+.nav-links li.active {
+  background: linear-gradient(90deg, var(--accent-glow), transparent 85%);
+  color: var(--text-dark); transform: none;
+}
+.nav-links li.active::before {
+  content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 3px; border-radius: 3px;
+  background: var(--maroon); box-shadow: 0 0 12px var(--maroon);
+}
+.nav-links li.active i { color: var(--maroon); }
+
+/* Top bar */
+.search-container { background: var(--white); border: 1px solid var(--border-color); box-shadow: var(--card-shadow); border-radius: 14px; }
+.search-container:focus-within { border-color: var(--maroon); box-shadow: 0 0 0 3px var(--accent-glow); }
+.theme-toggle { background: var(--white); border: 1px solid var(--border-color); box-shadow: var(--card-shadow); }
+
+/* Section headers */
+.section-header { border-bottom: 1px solid var(--border-color); padding-bottom: 1.1rem; margin-bottom: 2rem; flex-wrap: wrap; gap: 12px; }
+.section-title {
+  font-size: 2rem; font-weight: 700; border: none;
+  background: linear-gradient(90deg, var(--maroon), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Buttons */
+.add-btn, .submit-btn, .verify-banner button {
+  background: linear-gradient(135deg, var(--maroon), var(--maroon-light));
+  color: var(--on-accent); border-radius: 12px; font-weight: 600;
+  box-shadow: 0 6px 20px var(--accent-glow); transition: transform 0.15s, box-shadow 0.2s, filter 0.2s;
+}
+.add-btn:hover, .submit-btn:hover { background: linear-gradient(135deg, var(--maroon), var(--maroon-light)); filter: brightness(1.08); transform: translateY(-1px); }
+.add-btn[style*="background"] { box-shadow: none; color: #e6edf7; }  /* secondary (grey) header buttons */
+.m-tab { background: var(--white); border-radius: 999px; padding: 0.5rem 1.2rem; }
+.m-tab.active { background: linear-gradient(135deg, var(--maroon), var(--maroon-light)); color: var(--on-accent); border-color: transparent; }
+.pc-card button, .unlock-btn, .mini-player button {
+  background: var(--border-color); color: var(--text-dark); border: 1px solid var(--border-color); border-radius: 10px;
+}
+.pc-card button:hover, .unlock-btn:hover, .mini-player button:hover { background: var(--maroon); color: var(--on-accent); border-color: transparent; }
+.close-modal-btn { background: var(--border-color); color: var(--text-dark); }
+.close-modal-btn:hover { background: var(--maroon); color: var(--on-accent); }
+
+/* Cards */
+.vault-card, .cred-card, .academic-card, .shopping-card, .pc-card, .movie-card, .verify-banner {
+  background: var(--white); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: var(--card-shadow);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.vault-card:hover, .cred-card:hover, .academic-card:hover, .shopping-card:hover, .pc-card:hover {
+  border-color: var(--accent-glow); box-shadow: var(--card-shadow), 0 0 0 1px var(--accent-glow);
+}
+.movie-card:hover { transform: translateY(-4px); box-shadow: var(--card-shadow), 0 12px 32px var(--accent-glow); }
+.pc-card h3 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-gray); }
+.pc-status.ok { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+.pc-status { background: #ef4444; }
+
+/* Inputs */
+.input-group input, .pc-card input:not([type="file"]), .pc-card select, .pc-card textarea,
+.add-movie-bar input, #vault-pin, #vault-pin-confirm, .auth-form select {
+  background: var(--bg-light); border: 1px solid var(--input-border); border-radius: 10px; color: var(--text-dark);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-group input:focus, .pc-card input:focus, .pc-card select:focus, .pc-card textarea:focus,
+.add-movie-bar input:focus, #vault-pin:focus, #vault-pin-confirm:focus {
+  outline: none; border-color: var(--maroon); box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Modals, toast, overlays */
+.modal-overlay { background: rgba(3, 6, 12, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.modal-content, .auth-container { background: var(--modal-bg); border: 1px solid var(--border-color); border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45); }
+.toast { background: var(--modal-bg); color: var(--text-dark); border: 1px solid var(--accent-glow); border-radius: 999px;
+  padding: 10px 18px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 20px var(--accent-glow); }
+.glass-overlay { background: var(--glass-bg); border-radius: 20px; }
+.mini-player { background: var(--modal-bg); border-radius: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--accent-glow); }
+.empty-state { background: var(--border-color); border-color: var(--input-border); border-radius: 16px; }
+
+/* Auth screen */
+.auth-overlay {
+  background:
+    radial-gradient(800px 500px at 50% 0%, var(--page-glow-1), transparent 70%),
+    radial-gradient(700px 400px at 50% 100%, var(--page-glow-2), transparent 70%),
+    var(--bg-light);
+}
+.auth-logo { width: 84px; height: 84px; border-radius: 22px; margin: 0 auto 1rem; display: block;
+  box-shadow: 0 0 0 1px var(--border-color), 0 0 40px var(--accent-glow); }
+.auth-header h1 { font-size: 2rem; letter-spacing: 0.25em; color: var(--text-dark); }
+.auth-header p { color: var(--text-gray); margin: 0.4rem 0 1.5rem; font-size: 0.9rem; }
+.auth-tab.active { color: var(--maroon); border-bottom-color: var(--maroon); }
+
+/* Scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--input-border) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--input-border); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+/* Sidebar footer buttons carry inline colours from before the redesign; quieter versions here. */
+.install-app-btn { background: transparent !important; color: var(--maroon) !important; border: 1px solid var(--maroon) !important; box-shadow: none !important; }
+.install-app-btn:hover { background: var(--accent-glow) !important; }
+.sidebar .add-btn[onclick="handleLogout()"] { background: var(--border-color) !important; color: var(--text-gray); box-shadow: none; }
+.sidebar .add-btn[onclick="handleLogout()"]:hover { color: var(--text-dark); }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-center-v11';
+const CACHE_NAME = 'jarvis-v1';
 
 const APP_SHELL = [
   './',
@@ -11,6 +11,8 @@ const APP_SHELL = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-512.png',
+  './favicon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-brands-400.woff2',
@@ -37,7 +39,7 @@ self.addEventListener('activate', event => {
 
 // Network-first for the app's own files and CDN libraries (fresh after every deploy, cached for offline).
 // Everything else (Firebase APIs, the PC agent, OMDB) goes straight to the network and is never cached.
-const CACHEABLE_HOSTS = ['cdnjs.cloudflare.com', 'www.gstatic.com'];
+const CACHEABLE_HOSTS = ['cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);

@@ -64,7 +64,7 @@ async function installApp() {
   deferredPrompt = deferredPrompt || window.__installPrompt;
   if (!deferredPrompt) {
     return alert([
-      "If you see the ⧉ icon at the right of the address bar, the app is already installed: click it to open it.", "",
+      "If you see the ⧉ icon at the right of the address bar, JARVIS is already installed: click it to open it.", "",
       "Otherwise install from the browser menu:", "",
       "Brave: menu (≡, top right) -> Save and share -> Install page as app",
       "Chrome/Edge: the install icon at the right of the address bar",
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const body = document.body;
   const icon = themeToggle.querySelector('i');
 
-  if (localStorage.getItem('theme') === 'dark') {
+  if (localStorage.getItem('theme') !== 'light') {  // dark is the default look
     body.setAttribute('data-theme', 'dark');
     icon.classList.replace('fa-moon', 'fa-sun');
   }
@@ -496,7 +496,7 @@ async function prfSecret(credId) {
 async function enrollBiometric() {
   const cred = await navigator.credentials.create({ publicKey: {
     challenge: rand(32),
-    rp: { name: 'Command Center' },
+    rp: { name: 'JARVIS' },
     user: { id: new TextEncoder().encode(uid), name: currentUser.email, displayName: currentUser.email },
     pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
     authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },

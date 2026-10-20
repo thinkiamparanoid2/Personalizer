@@ -3,22 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Command Center</title>
+  <title>JARVIS</title>
   
   <link rel="manifest" href="manifest.json">
   <script>
     // Catch the install offer before the (deferred) module scripts load; script.js picks it up.
     window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.__installPrompt = e; });
   </script>
-  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png">
   
-  <meta name="theme-color" content="#8b0000">
+  <meta name="theme-color" content="#070b14">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Command Center">
+  <meta name="apple-mobile-web-app-title" content="JARVIS">
   <link rel="apple-touch-icon" href="icon-192.png">
   
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -27,8 +30,9 @@
   <div id="auth-screen" class="auth-overlay show">
     <div class="auth-container">
       <div class="auth-header">
-        <i class="fa-solid fa-user-astronaut" style="font-size:3rem;color:var(--maroon);margin-bottom:10px;"></i>
-        <h2>Welcome Back</h2>
+        <img src="icon-192.png" class="auth-logo" alt="">
+        <h1>JARVIS</h1>
+        <p>Your personal command center</p>
         <button id="install-app-btn" class="submit-btn install-app-btn" onclick="installApp()" style="display: flex; margin-top: 15px; background: #27ae60; justify-content:center; gap:8px;">
           <i class="fa-solid fa-download"></i> Install Native App
         </button>
@@ -59,8 +63,9 @@
   <div class="dashboard-container" id="main-dashboard" style="display:none;">
     <nav class="sidebar">
       <div class="profile-section">
-        <div class="avatar"><i class="fa-solid fa-user-astronaut"></i></div>
-        <h2>Command Center</h2>
+        <img src="icon-192.png" class="brand-logo" alt="">
+        <h2 class="brand">JARVIS</h2>
+        <p class="brand-sub">Personal command center</p>
       </div>
       <ul class="nav-links">
         <li class="active" onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
