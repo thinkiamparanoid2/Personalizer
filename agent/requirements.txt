@@ -1,0 +1,4 @@
+fastapi>=0.115
+starlette>=0.39  # FileResponse Range/206 support
+uvicorn>=0.30
+pycaw>=20240316  # AudioDevice.EndpointVolume
