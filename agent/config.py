@@ -24,6 +24,7 @@ def _tailscale_names():
 def _defaults():
     return {
         "token": secrets.token_urlsafe(32),
+        "stream_secret": secrets.token_urlsafe(32),
         "host": "127.0.0.1",
         "port": 8765,
         # Host headers accepted (DNS-rebinding guard). Add your MagicDNS name if not auto-detected.
@@ -39,4 +40,8 @@ def load():
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(_defaults(), indent=2), encoding="utf-8")
         print(f"Created {CONFIG_PATH} - edit cors_origins/roots, then copy the token to your clients.")
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if "stream_secret" not in cfg:  # configs from before signed stream links
+        cfg["stream_secret"] = secrets.token_urlsafe(32)
+        CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
