@@ -64,7 +64,7 @@ async function installApp() {
   deferredPrompt = deferredPrompt || window.__installPrompt;
   if (!deferredPrompt) {
     return alert([
-      "If you see the ⧉ icon at the right of the address bar, JARVIS is already installed: click it to open it.", "",
+      "If you see the ⧉ icon at the right of the address bar, Farvis is already installed: click it to open it.", "",
       "Otherwise install from the browser menu:", "",
       "Brave: menu (≡, top right) -> Save and share -> Install page as app",
       "Chrome/Edge: the install icon at the right of the address bar",
@@ -496,7 +496,7 @@ async function prfSecret(credId) {
 async function enrollBiometric() {
   const cred = await navigator.credentials.create({ publicKey: {
     challenge: rand(32),
-    rp: { name: 'JARVIS' },
+    rp: { name: 'Farvis' },
     user: { id: new TextEncoder().encode(uid), name: currentUser.email, displayName: currentUser.email },
     pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
     authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },

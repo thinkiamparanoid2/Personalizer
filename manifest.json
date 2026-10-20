@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "JARVIS",
-  "short_name": "JARVIS",
+  "name": "Farvis",
+  "short_name": "Farvis",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
