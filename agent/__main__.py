@@ -1,5 +1,11 @@
 import ipaddress
 import sys
+from pathlib import Path
+
+if sys.stdout is None or sys.stderr is None:
+    _log = open(Path(__file__).with_name("agent.log"), "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _log
+    sys.stderr = sys.stderr or _log
 
 import uvicorn
 

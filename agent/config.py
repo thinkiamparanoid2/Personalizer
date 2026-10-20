@@ -46,7 +46,7 @@ def _defaults():
         "sevenzip_exe": r"C:\Program Files\7-Zip\7z.exe",
         "cloudflared_exe": "cloudflared",
         "gemini_api_key": "",
-        "gemini_model": "gemini-2.5-flash",
+        "gemini_model": "gemini-3.8-flash",
         "whisper_model": "large-v3-turbo",
         "rembg_model": "birefnet-general",
         "signature_png": "",
