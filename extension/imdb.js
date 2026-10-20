@@ -1,6 +1,6 @@
 // Injects "+ Plan to Watch" / "✓ Watched" under the IMDb title.
 // Movie data comes from the page's own JSON-LD; the PWA (already logged in) saves it.
-const DEFAULT_PWA_URL = 'https://YOUR_PROJECT_ID.web.app/';
+const DEFAULT_PWA_URL = 'https://personal-c7745.web.app/';
 
 function decodeEntities(s) {
   const t = document.createElement('textarea');
