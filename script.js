@@ -55,9 +55,21 @@ window.addEventListener('beforeinstallprompt', (e) => {
   installButtons().forEach(btn => { btn.style.display = 'flex'; });
 });
 
+// Already running as the installed app: no install buttons.
+if (window.matchMedia('(display-mode: standalone)').matches) {
+  document.addEventListener('DOMContentLoaded', () => installButtons().forEach(btn => { btn.style.display = 'none'; }));
+}
+
 async function installApp() {
   if (!deferredPrompt) {
-    return alert("Use your browser menu: Brave/Chrome menu -> 'Install Command Center' (or the install icon in the address bar).");
+    return alert("Install from the browser menu:
+
+" +
+      "Brave: menu (≡, top right) -> Save and share -> Install page as app
+" +
+      "Chrome/Edge: the install icon at the right of the address bar
+" +
+      "Android: menu -> Add to Home screen / Install app");
   }
   deferredPrompt.prompt();
   await deferredPrompt.userChoice;

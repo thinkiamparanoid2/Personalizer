@@ -25,7 +25,7 @@
       <div class="auth-header">
         <i class="fa-solid fa-user-astronaut" style="font-size:3rem;color:var(--maroon);margin-bottom:10px;"></i>
         <h2>Welcome Back</h2>
-        <button id="install-app-btn" class="submit-btn install-app-btn" onclick="installApp()" style="display: none; margin-top: 15px; background: #27ae60; justify-content:center; gap:8px;">
+        <button id="install-app-btn" class="submit-btn install-app-btn" onclick="installApp()" style="display: flex; margin-top: 15px; background: #27ae60; justify-content:center; gap:8px;">
           <i class="fa-solid fa-download"></i> Install Native App
         </button>
       </div>
@@ -67,7 +67,7 @@
         <li onclick="switchTab('pc',this);pcInit()"><i class="fa-solid fa-desktop"></i> PC Control</li>
       </ul>
       <div class="github-link" style="margin-top:auto;">
-        <button class="add-btn install-app-btn" style="width:100%;justify-content:center;background:#27ae60;margin-bottom:8px;display:none;" onclick="installApp()">
+        <button class="add-btn install-app-btn" style="width:100%;justify-content:center;background:#27ae60;margin-bottom:8px;" onclick="installApp()">
           <i class="fa-solid fa-download"></i> Install App
         </button>
         <button class="add-btn" style="width:100%;justify-content:center;background:#333;" onclick="handleLogout()">
