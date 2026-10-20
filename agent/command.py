@@ -117,17 +117,35 @@ def transcribe_bytes(data, suffix=".webm"):
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        segments = transcribe(path, model=config.load()["command_whisper_model"], fast=True)
+        # Keep the latest clip for troubleshooting misheard commands (overwritten each time).
+        with open(os.path.join(os.path.dirname(__file__), "last_voice" + suffix), "wb") as f:
+            f.write(data)
+        segments = transcribe(path, **_command_stt_options())
         return " ".join(text for _, text in segments).strip()
     finally:
         os.unlink(path)
+
+
+# Biases recognition toward the words commands actually use (short clips are easy to mishear).
+COMMAND_HINT = ("Jarvis commands: play, pause, resume, next song, previous, volume up, volume down, mute, "
+                "lock the PC, sleep in 30 minutes, shut down, cancel shutdown, switch to headphones, "
+                "switch to speakers, play on YouTube, download.")
+
+
+def _command_stt_options():
+    cfg = config.load()
+    # No VAD: it can clip the first word of a short clip. Fixed language: auto-detection on
+    # 2-second clips often picks the wrong language and returns gibberish.
+    return {"model": cfg["command_whisper_model"], "language": cfg["command_language"] or None,
+            "initial_prompt": COMMAND_HINT, "vad_filter": False, "beam_size": 5,
+            "condition_on_previous_text": False}
 
 
 def warm_up():
     """Load the command speech model at startup so the first voice command isn't slow."""
     import numpy as np
     from .notes import transcribe
-    transcribe(np.zeros(16000, dtype=np.float32), model=config.load()["command_whisper_model"], fast=True)
+    transcribe(np.zeros(16000, dtype=np.float32), **_command_stt_options())
 
 
 HEADPHONES = ("headphone", "headset", "earphone", "earbud", "airpod", "buds")

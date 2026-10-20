@@ -50,7 +50,8 @@ def _defaults():
         # Tried in order when the main model is overloaded (503/504) or missing (404).
         "gemini_fallback_models": ["gemini-3.5-flash"],
         "whisper_model": "large-v3-turbo",
-        "command_whisper_model": "small",  # short voice commands: fast, stays loaded
+        "command_whisper_model": "large-v3-turbo",  # same model as notes: accurate, ~0.5 s on GPU
+        "command_language": "en",  # "" = auto-detect (unreliable on 2-second clips)
         "rembg_model": "birefnet-general",
         "signature_png": "",
         # OpenSubtitles.com account (optional; podnapisi works without one).

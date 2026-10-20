@@ -89,9 +89,10 @@ _whisper = {}
 _whisper_lock = threading.Lock()
 
 
-def transcribe(audio_path, job=None, model=None, fast=False):
+def transcribe(audio_path, job=None, model=None, **options):
     """[(start_seconds, text)]. audio_path: file path or 16 kHz float32 numpy array.
-    fast=True (short voice commands): greedy decoding, no VAD pass."""
+    options are passed to faster-whisper (e.g. language, initial_prompt, vad_filter, beam_size)."""
+    options = {"vad_filter": True, "beam_size": 5, **options}
     from faster_whisper import WhisperModel
     name = model or config.load()["whisper_model"]
 
@@ -103,7 +104,7 @@ def transcribe(audio_path, job=None, model=None, fast=False):
                     job.progress(f"loading Whisper {name} (first use downloads it, ~1.6 GB for large)")
                 _whisper[key] = WhisperModel(name, device=device, compute_type=compute)
         audio = str(audio_path) if isinstance(audio_path, (str, Path)) else audio_path
-        segments, info = _whisper[key].transcribe(audio, vad_filter=not fast, beam_size=1 if fast else 5)
+        segments, info = _whisper[key].transcribe(audio, **options)
         out = []
         for seg in segments:
             out.append((seg.start, seg.text.strip()))
