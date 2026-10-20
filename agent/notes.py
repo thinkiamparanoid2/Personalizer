@@ -87,12 +87,12 @@ def paragraphs(segments, every=30):
 _whisper = {}
 
 
-def transcribe(audio_path, job=None):
+def transcribe(audio_path, job=None, model=None):
     from faster_whisper import WhisperModel
-    name = config.load()["whisper_model"]
+    name = model or config.load()["whisper_model"]
 
     def run(device, compute):
-        key = (device, compute)
+        key = (name, device, compute)
         if key not in _whisper:
             _whisper[key] = WhisperModel(name, device=device, compute_type=compute)
         segments, info = _whisper[key].transcribe(str(audio_path), vad_filter=True, beam_size=5)

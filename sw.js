@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-center-v8';
+const CACHE_NAME = 'command-center-v10';
 
 const APP_SHELL = [
   './',
@@ -35,32 +35,25 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Network-first for the app's own files and CDN libraries (fresh after every deploy, cached for offline).
+// Everything else (Firebase APIs, the PC agent, OMDB) goes straight to the network and is never cached.
+const CACHEABLE_HOSTS = ['cdnjs.cloudflare.com', 'www.gstatic.com'];
+
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-
-  if (
-    url.hostname.includes('firestore.googleapis.com') ||
-    url.hostname.includes('firebase.googleapis.com') ||
-    url.hostname.includes('identitytoolkit.googleapis.com') ||
-    url.hostname.includes('securetoken.googleapis.com') ||
-    url.hostname.includes('omdbapi.com')
-  ) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
+  const cacheable = event.request.method === 'GET' &&
+    (url.origin === self.location.origin || CACHEABLE_HOSTS.includes(url.hostname));
+  if (!cacheable) return;
 
   event.respondWith(
-    // Navigations like /?addMovie=... should still get the cached shell offline.
-    caches.match(event.request, { ignoreSearch: event.request.mode === 'navigate' }).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(response => {
-        if (!response || response.status !== 200 || event.request.method !== 'GET') {
-          return response;
-        }
+    fetch(event.request).then(response => {
+      if (response.ok) {
         const clone = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        return response;
-      });
-    })
+      }
+      return response;
+    }).catch(() =>
+      // Offline: navigations like /?addMovie=... still get the cached shell.
+      caches.match(event.request, { ignoreSearch: event.request.mode === 'navigate' }))
   );
 });

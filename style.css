@@ -157,6 +157,14 @@ body {
 
 .vault-container { position: relative; min-height: 400px; }
 
+/* EMPTY STATES + BANNER */
+.empty-state { grid-column: 1 / -1; color: var(--text-gray); text-align: center; padding: 2.5rem 1rem; border: 1px dashed var(--border-color); border-radius: 12px; }
+.empty-state i { color: var(--maroon); margin-right: 6px; }
+.verify-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--white); border: 1px solid var(--maroon); border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 1rem; color: var(--text-dark); }
+.verify-banner i { color: var(--maroon); }
+.verify-banner button { background: var(--maroon); color: #fff; border: none; border-radius: 8px; padding: 0.45rem 0.8rem; font-weight: 600; cursor: pointer; }
+
 /* PC CONTROL */
 .pc-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #c62828; vertical-align: middle; margin-left: 6px; }
 .pc-status.ok { background: #2e7d32; }
@@ -183,6 +191,7 @@ body {
 .pc-item .pc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-item button { padding: 0.35rem 0.6rem; min-height: 32px; }
 .pc-click { cursor: pointer; }
+.pc-card button.recording { background: #c62828; color: #fff; animation: pulse 1.2s infinite; }
 .pc-click:hover { background: var(--border-color); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }
 .chip-row:empty { display: none; }

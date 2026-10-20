@@ -25,7 +25,7 @@
       <div class="auth-header">
         <i class="fa-solid fa-user-astronaut" style="font-size:3rem;color:var(--maroon);margin-bottom:10px;"></i>
         <h2>Welcome Back</h2>
-        <button id="install-app-btn" class="submit-btn" style="display: none; margin-top: 15px; background: #27ae60;">
+        <button id="install-app-btn" class="submit-btn install-app-btn" onclick="installApp()" style="display: none; margin-top: 15px; background: #27ae60; justify-content:center; gap:8px;">
           <i class="fa-solid fa-download"></i> Install Native App
         </button>
       </div>
@@ -67,6 +67,9 @@
         <li onclick="switchTab('pc',this);pcInit()"><i class="fa-solid fa-desktop"></i> PC Control</li>
       </ul>
       <div class="github-link" style="margin-top:auto;">
+        <button class="add-btn install-app-btn" style="width:100%;justify-content:center;background:#27ae60;margin-bottom:8px;display:none;" onclick="installApp()">
+          <i class="fa-solid fa-download"></i> Install App
+        </button>
         <button class="add-btn" style="width:100%;justify-content:center;background:#333;" onclick="handleLogout()">
           <i class="fa-solid fa-right-from-bracket"></i> Log Out
         </button>
@@ -74,6 +77,13 @@
     </nav>
 
     <main class="content-area">
+      <div id="verify-banner" class="verify-banner" style="display:none;">
+        <span><i class="fa-solid fa-envelope-circle-check"></i> Verify your email to import data saved with the old login.</span>
+        <span style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="resendVerification()">Resend email</button>
+          <button onclick="recheckVerification()">I've verified</button>
+        </span>
+      </div>
       <div class="top-bar">
         <div class="search-container">
           <i class="fa-solid fa-search"></i>
@@ -173,6 +183,15 @@
           <button class="add-btn" style="background:#333;" onclick="toggleModal('agent-settings-modal',true)"><i class="fa-solid fa-gear"></i> Agent</button>
         </div>
         <div class="pc-grid">
+          <div class="pc-card pc-wide">
+            <h3><i class="fa-solid fa-microphone"></i> Command</h3>
+            <div class="pc-row">
+              <input id="pc-cmd" placeholder='Say or type: "play lofi on YouTube", "volume down", "switch to headphones", "sleep in 30 minutes"' onkeydown="if(event.key==='Enter')pcCommand()">
+              <button id="pc-mic" onclick="pcVoice()" aria-label="Voice command" title="Tap to talk, tap again to stop"><i class="fa-solid fa-microphone"></i></button>
+              <button onclick="pcCommand()" aria-label="Run command"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+            <div id="pc-cmd-out" class="pc-muted"></div>
+          </div>
           <div class="pc-card">
             <h3><i class="fa-solid fa-sliders"></i> Remote</h3>
             <div class="pc-row">

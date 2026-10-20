@@ -48,6 +48,7 @@ def _defaults():
         "gemini_api_key": "",
         "gemini_model": "gemini-3.8-flash",
         "whisper_model": "large-v3-turbo",
+        "command_whisper_model": "small",  # short voice commands: fast, stays loaded
         "rembg_model": "birefnet-general",
         "signature_png": "",
         # OpenSubtitles.com account (optional; podnapisi works without one).

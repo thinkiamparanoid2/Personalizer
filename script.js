@@ -29,6 +29,8 @@ const vaultItems = new Map(), credItems = new Map(), movieItems = new Map(), chi
 const OWNED_COLLECTIONS = ['vault', 'credentials', 'movies', 'academic', 'shopping'];
 const AUTO_LOCK_MS = 5 * 60 * 1000;
 
+const emptyState = (icon, text) => `<p class="empty-state"><i class="fa-solid ${icon}"></i> ${text}</p>`;
+
 const escapeHTML = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -45,25 +47,26 @@ const cssUrl = u => escapeHTML(safeUrl(u).replace(/["'()\\]/g, c => '%' + c.char
 // ==========================================
 // --- PWA CAPTURED ENGINE CHANNELS ---
 // ==========================================
+// Install buttons (login screen + sidebar) appear only when the browser offers installation.
+const installButtons = () => document.querySelectorAll('.install-app-btn');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  const installBtn = document.getElementById('install-app-btn');
-  if (installBtn) {
-    installBtn.style.display = 'block';
-    installBtn.addEventListener('click', async () => {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') console.log('User installed PWA application shell container.');
-      deferredPrompt = null;
-      installBtn.style.display = 'none';
-    });
-  }
+  installButtons().forEach(btn => { btn.style.display = 'flex'; });
 });
 
+async function installApp() {
+  if (!deferredPrompt) {
+    return alert("Use your browser menu: Brave/Chrome menu -> 'Install Command Center' (or the install icon in the address bar).");
+  }
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installButtons().forEach(btn => { btn.style.display = 'none'; });
+}
+
 window.addEventListener('appinstalled', () => {
-  const installBtn = document.getElementById('install-app-btn');
-  if (installBtn) installBtn.style.display = 'none';
+  installButtons().forEach(btn => { btn.style.display = 'none'; });
 });
 
 // ==========================================
@@ -106,6 +109,7 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) return showAuthScreen();
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('main-dashboard').style.display = 'flex';
+  document.getElementById('verify-banner').style.display = user.emailVerified ? 'none' : 'flex';
   await migrateLegacyOwners(user);
   startListeners();
   importMovieFromUrl();
@@ -172,6 +176,24 @@ async function sendResetEmail() {
     showToast("If that account exists, a reset link was sent.");
     switchAuthTab('login');
   } catch (e) { alert(authErrorText(e)); }
+}
+
+async function resendVerification() {
+  try {
+    await sendEmailVerification(currentUser);
+    showToast("Verification email sent (check spam too).");
+  } catch (e) { alert(authErrorText(e)); }
+}
+
+// After clicking the email link: refresh the token so the rules see email_verified, then import old data.
+async function recheckVerification() {
+  await currentUser.reload();
+  await currentUser.getIdToken(true);
+  if (!currentUser.emailVerified) return alert("Not verified yet. Click the link in the email first.");
+  document.getElementById('verify-banner').style.display = 'none';
+  showToast("Verified! Importing your old data...");
+  await migrateLegacyOwners(currentUser);
+  showToast("Old data imported.");
 }
 
 function handleLogout() {
@@ -328,7 +350,7 @@ function listenToAcademic() {
           </div>
           <button class="remove-btn" onclick="deleteDocItem('academic','${docSnap.id}')"><i class="fa-solid fa-trash"></i></button>
         </div>`;
-    }).join('');
+    }).join('') || emptyState('fa-calendar-plus', 'No events yet. Add your next quiz, assignment or lab test.');
   });
 }
 
@@ -584,7 +606,7 @@ async function renderVault() {
           <p class="hidden-data"><i class="fa-solid fa-microchip" style="color:#d4af37;font-size:1.2rem;vertical-align:middle;margin-right:6px;"></i>${escapeHTML(item.number)}</p>
           <span class="view-hint">Click to view details</span>
         </div>`;
-  }).join('');
+  }).join('') || emptyState('fa-shield-halved', 'Vault is empty. Add your NID, passport or bank details.');
 }
 
 // --- Quick-copy identity chips (label + value, both encrypted) ---
@@ -760,7 +782,7 @@ async function renderCredentials() {
             ${showCopy ? `<button class="copy-btn" style="margin-top:4px;font-size:0.85rem;color:var(--maroon);background:none;border:none;cursor:pointer;padding:0;" onclick="copyCredPassword('${item.id}')"><i class="fa-regular fa-copy"></i> Copy Password</button>` : ''}
           </div>
         </div>`;
-  }).join('');
+  }).join('') || emptyState('fa-key', 'No credentials yet. Click "Add New" to save one.');
 }
 
 function copyCredPassword(id) {
@@ -898,8 +920,9 @@ function listenToMovies() {
         </div>`;
       (movie.status === 'watched' ? watchedHTML : planHTML).push(html);
     });
-    watchedList.innerHTML = watchedHTML.join('');
-    planList.innerHTML    = planHTML.join('');
+    const noMedia = emptyState('fa-film', 'Nothing here yet. Search a title above, or use the IMDb buttons in Brave.');
+    watchedList.innerHTML = watchedHTML.join('') || noMedia;
+    planList.innerHTML    = planHTML.join('') || noMedia;
   });
 }
 
@@ -980,7 +1003,7 @@ function listenToShopping() {
           </div>
           <button class="remove-btn" onclick="deleteDocItem('shopping','${docSnap.id}')"><i class="fa-solid fa-trash"></i></button>
         </div>`;
-    }).join('');
+    }).join('') || emptyState('fa-cart-plus', 'Shopping list is empty.');
   });
 }
 
@@ -1024,6 +1047,9 @@ window.switchTab           = switchTab;
 window.filterItems         = filterItems;
 window.copyText            = copyText;
 window.showToast           = showToast;
+window.installApp          = installApp;
+window.resendVerification  = resendVerification;
+window.recheckVerification = recheckVerification;
 window.toggleModal         = toggleModal;
 window.unlockVault         = unlockVault;
 window.verifyPin           = verifyPin;

@@ -106,6 +106,50 @@ const pcPower = ui(async action => {
   toast(action === 'cancel' ? 'Timers cancelled' : `${action}${delay_s ? ` in ${delay_s / 60} min` : ''}`);
 });
 
+// ---------- Voice / text command bar ----------
+async function showCommandResult(r) {
+  const out = $('pc-cmd-out');
+  const heard = r.heard ? `"${r.heard}" \u2192 ` : '';
+  if (r.confirm) {
+    if (!confirm(r.confirm)) { out.textContent = `${heard}cancelled`; return; }
+    r = { heard: r.heard, ...(await api('/api/command', { method: 'POST', json: { command: r.command, confirmed: true } })) };
+  }
+  out.textContent = `${heard}${r.did}`;
+}
+
+const pcCommand = ui(async () => {
+  const text = $('pc-cmd').value.trim();
+  if (!text) return;
+  $('pc-cmd-out').textContent = 'Working...';
+  await showCommandResult(await api('/api/command', { method: 'POST', json: { text } }));
+  $('pc-cmd').value = '';
+});
+
+// Records in the browser and lets the PC transcribe (Whisper on the GPU): works in Brave,
+// which disables the Web Speech API.
+let recorder = null;
+const pcVoice = ui(async () => {
+  if (recorder) return recorder.stop();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = ui(async () => {
+    stream.getTracks().forEach(t => t.stop());
+    recorder = null;
+    $('pc-mic').classList.remove('recording');
+    const type = chunks[0]?.type || 'audio/webm';
+    const form = new FormData();
+    form.append('audio', new Blob(chunks, { type }), type.includes('mp4') ? 'voice.m4a' : 'voice.webm');
+    $('pc-cmd-out').textContent = 'Transcribing...';
+    await showCommandResult(await api('/api/command/voice', { method: 'POST', form }));
+  });
+  recorder.start();
+  $('pc-mic').classList.add('recording');
+  $('pc-cmd-out').textContent = 'Listening... tap the mic again to stop';
+  setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 10000);
+});
+
 // ---------- Clipboard ----------
 const pcSendClip = ui(async () => {
   const text = $('pc-clip').value;
@@ -250,7 +294,7 @@ const pcPdf = ui(async kind => {
 });
 
 Object.assign(window, {
-  pcInit, pcSaveSettings, pcMedia, pcPlayYt, pcLoadAudio: ui(pcLoadAudio), pcSetAudio, pcPower,
+  pcInit, pcSaveSettings, pcCommand, pcVoice, pcMedia, pcPlayYt, pcLoadAudio: ui(pcLoadAudio), pcSetAudio, pcPower,
   pcSendClip, pcSendClipImage, pcUpload, pcDownload, pcPlay, pcCloseVideo, pcVlc, pcShare, pcBrowse,
   pcYtdl, pcNotes, pcPdf
 });

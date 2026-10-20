@@ -13,8 +13,9 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
-from . import config, files, jobs, media, notes, osctl, signing, tools
+from . import command as cmdbar, config, files, jobs, media, notes, osctl, signing, tools
 from .paths import resolve_allowed
 from .util import safe_name, unique_path
 
@@ -137,6 +138,33 @@ class Power(BaseModel):
 @api.post("/power")
 def power(body: Power):
     return osctl.power(body.action, body.delay_s)
+
+
+# ---------- 2.1 voice / natural-language command bar ----------
+class CommandBody(BaseModel):
+    text: str | None = None
+    command: cmdbar.Command | None = None  # a confirmed command sent back by the client
+    confirmed: bool = False
+
+
+@api.post("/command")
+async def run_command(body: CommandBody):
+    if body.command:
+        return await cmdbar.dispatch(body.command, body.confirmed)
+    if not (body.text or "").strip():
+        raise ValueError("text required")
+    cmd = await run_in_threadpool(cmdbar.interpret, body.text)
+    return await cmdbar.dispatch(cmd, False, body.text)
+
+
+@api.post("/command/voice")
+async def run_voice(audio: UploadFile = File(...)):
+    suffix = Path(audio.filename or "voice.webm").suffix or ".webm"
+    heard = await run_in_threadpool(cmdbar.transcribe_bytes, await audio.read(), suffix)
+    if not heard:
+        return {"heard": "", "did": "Didn't catch that - try again."}
+    cmd = await run_in_threadpool(cmdbar.interpret, heard)
+    return await cmdbar.dispatch(cmd, False, heard)
 
 
 # ---------- 3.x files, AirDrop, clipboard, share ----------
