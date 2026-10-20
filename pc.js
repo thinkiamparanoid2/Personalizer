@@ -212,8 +212,10 @@ async function signedUrl(path) {
 const pcDownload = ui(async entry => { window.open(await signedUrl(entry.path), '_blank'); });
 
 const pcPlay = ui(async entry => {
-  $('video-title').innerText = entry.name;
-  $('pc-video').src = await signedUrl(entry.path);
+  const r = await api('/api/stream-link', { method: 'POST', json: { path: entry.path } });
+  // AC3/DTS audio (most movie rips) has no sound in browsers: the agent converts it to AAC on the fly.
+  $('video-title').innerText = entry.name + (r.transcode ? `  (converting ${r.audio || r.video} for the browser, no seeking - use VLC for full control)` : '');
+  $('pc-video').src = agent().url + (r.transcode ? r.compat_url : r.url);
   toggleModal('video-modal', true);
   $('pc-video').play().catch(() => {});
 });
@@ -226,7 +228,15 @@ function pcCloseVideo() {
   toggleModal('video-modal', false);
 }
 
-const pcVlc = ui(async entry => { location.href = 'vlc://' + await signedUrl(entry.path); });
+// On this PC: the agent launches VLC on the file. Elsewhere (phone): vlc:// link for VLC Android.
+const agentIsLocal = () => /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(agent().url);
+const pcVlc = ui(async entry => {
+  if (agentIsLocal()) {
+    await api('/api/open-vlc', { method: 'POST', json: { path: entry.path } });
+    return toast('Opening in VLC on the PC');
+  }
+  location.href = 'vlc://' + await signedUrl(entry.path);
+});
 
 const pcShare = ui(async entry => {
   toast('Creating public link...');
@@ -255,13 +265,18 @@ const pcBrowse = ui(async path => {
 });
 
 // ---------- YouTube & notes jobs ----------
-let pollTimer = null;
+let pollTimer = null, jobList = [];
+const pcReveal = ui(async path => {
+  await api('/api/reveal', { method: 'POST', json: { path } });
+  toast('Opened in Explorer on the PC');
+});
 async function renderJobs() {
   const list = await api('/api/jobs');
-  $('pc-jobs').innerHTML = list.slice(0, 8).map(j => `
+  jobList = list.slice(0, 8);
+  $('pc-jobs').innerHTML = jobList.map((j, i) => `
     <div class="pc-item"><i class="fa-solid ${j.status === 'done' ? 'fa-check' : j.status === 'error' ? 'fa-triangle-exclamation' : 'fa-spinner fa-spin'}"></i>
-      <span class="pc-name">${escapeHTML(j.kind)}: ${escapeHTML(j.result?.title || j.error || j.progress || j.status)}</span>
-      ${j.result?.file ? `<span class="pc-muted" title="${escapeHTML(j.result.file)}">${escapeHTML(j.result.file.split(/[\\/]/).pop())}</span>` : ''}</div>`).join('');
+      <span class="pc-name" title="${escapeHTML(j.error || j.result?.file || '')}">${escapeHTML(j.kind)}: ${escapeHTML(j.result?.title || j.error || j.progress || j.status)}</span>
+      ${j.result?.file ? `<button onclick="pcReveal(jobList[${i}].result.file)" title="${escapeHTML(j.result.file)}"><i class="fa-solid fa-folder-open"></i> Show</button>` : ''}</div>`).join('');
   clearTimeout(pollTimer);
   if (list.some(j => j.status === 'running')) pollTimer = setTimeout(() => renderJobs().catch(() => {}), 3000);
 }
@@ -296,23 +311,56 @@ const pcPdf = ui(async kind => {
     if (kind === 'compress') form.append('target_kb', $('pc-pdf-target').value);
   }
   toast('Processing...');
-  const res = await api(`/api/pdf/${kind}`, { method: 'POST', form, raw: true });
+  await saveResponse(await api(`/api/pdf/${kind}`, { method: 'POST', form, raw: true }), `${kind}.pdf`);
+});
+
+async function saveResponse(res, fallbackName) {
   const name = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(res.headers.get('Content-Disposition') || '')?.[1];
   const a = document.createElement('a');
   a.href = URL.createObjectURL(await res.blob());
-  a.download = name ? decodeURIComponent(name) : `${kind}.pdf`;
+  a.download = name ? decodeURIComponent(name) : fallbackName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+// ---------- Convert anything ----------
+const CONVERT_TARGETS = [
+  [/\.(docx?|rtf|odt|txt|pptx?|odp|xlsx?|csv|ods)$/i, [['pdf', 'PDF']]],
+  [/\.pdf$/i, [['docx', 'Word (DOCX)']]],
+  [/\.(webp|heic|heif|avif|png|jpe?g|bmp|gif|tiff?)$/i, [['pdf', 'PDF'], ['png', 'PNG'], ['jpg', 'JPG'], ['webp', 'WEBP']]],
+  [/\.(mp4|mkv|mov|webm|avi|m4v|wmv|flv)$/i, [['mp3', 'MP3 (audio)'], ['mp4', 'MP4 (H.264)'], ['mp4-25mb', 'MP4 under 25 MB']]],
+  [/\.(mp3|wav|m4a|flac|ogg|aac|opus|wma)$/i, [['mp3', 'MP3']]]
+];
+
+function pcConvertPick() {
+  const file = $('pc-convert-file').files[0];
+  const targets = file ? (CONVERT_TARGETS.find(([re]) => re.test(file.name))?.[1] || []) : [];
+  $('pc-convert-target').innerHTML = targets.length
+    ? targets.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')
+    : `<option value="">${file ? 'No conversion for this type' : 'Pick a file first'}</option>`;
+}
+
+const pcConvert = ui(async () => {
+  const file = $('pc-convert-file').files[0];
+  const target = $('pc-convert-target').value;
+  if (!file || !target) return alert('Pick a file and a target format.');
+  const form = new FormData();
+  form.append('item', file);
+  form.append('target', target);
+  toast(`Converting to ${target.toUpperCase()}...`);
+  await saveResponse(await api('/api/convert', { method: 'POST', form, raw: true }), `converted.${target.split('-')[0]}`);
+  toast('Converted!');
 });
 
 Object.assign(window, {
   pcInit, pcSaveSettings, pcCommand, pcVoice, pcMedia, pcPlayYt, pcLoadAudio: ui(pcLoadAudio), pcSetAudio, pcPower,
   pcSendClip, pcSendClipImage, pcUpload, pcDownload, pcPlay, pcCloseVideo, pcVlc, pcShare, pcBrowse,
-  pcYtdl, pcNotes, pcPdf
+  pcYtdl, pcNotes, pcPdf, pcReveal, pcConvert, pcConvertPick
 });
 // Inline handlers index into the latest lists.
 Object.defineProperties(window, {
   dropEntries: { get: () => dropEntries },
   fileEntries: { get: () => fileEntries },
-  fileParent: { get: () => fileParent }
+  fileParent: { get: () => fileParent },
+  jobList: { get: () => jobList }
 });

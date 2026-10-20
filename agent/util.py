@@ -61,6 +61,15 @@ def media_duration(path):
     return int(h) * 3600 + int(mi) * 60 + float(s)
 
 
+def media_codecs(path):
+    """(video_codec, audio_codec) of the first streams, from `ffmpeg -i`; None if absent."""
+    p = subprocess.run([ffmpeg(), "-hide_banner", "-i", str(path)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+    v = re.search(r"Stream #\S+.*?: Video: (\w+)", p.stderr)
+    a = re.search(r"Stream #\S+.*?: Audio: (\w+)", p.stderr)
+    return (v.group(1) if v else None), (a.group(1) if a else None)
+
+
 def safe_name(name, limit=150):
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(name)).strip(" .")
     return name[:limit] or "untitled"

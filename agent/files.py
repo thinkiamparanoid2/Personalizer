@@ -117,7 +117,11 @@ def start_share(path, check_roots=True):
     real = resolve_allowed(path) if check_roots else Path(path).resolve(strict=True)
     if not real.is_file():
         raise FileNotFoundError(path)
-    exe = shutil.which(cfg["cloudflared_exe"]) or (cfg["cloudflared_exe"] if Path(cfg["cloudflared_exe"]).exists() else None)
+    candidates = [cfg["cloudflared_exe"], r"C:\Program Files (x86)\cloudflared\cloudflared.exe",
+                  r"C:\Program Files\cloudflared\cloudflared.exe",
+                  str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "cloudflared.exe")]
+    exe = next((shutil.which(c) or (c if Path(c).is_file() else None) for c in candidates
+                if shutil.which(c) or Path(c).is_file()), None)
     if not exe:
         raise RuntimeError("cloudflared not found. Install: winget install Cloudflare.cloudflared")
     sid = secrets.token_urlsafe(16)

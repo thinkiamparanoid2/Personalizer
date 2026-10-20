@@ -249,6 +249,16 @@
             <div class="pc-row"><input type="file" id="pc-pdf-stamp" accept=".pdf"><button onclick="pcPdf('stamp')">Stamp signature</button></div>
           </div>
 
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-right-left"></i> Convert</h3>
+            <div class="pc-row"><input type="file" id="pc-convert-file" onchange="pcConvertPick()"></div>
+            <div class="pc-row">
+              <select id="pc-convert-target"><option value="">Pick a file first</option></select>
+              <button onclick="pcConvert()">Convert</button>
+            </div>
+            <p class="pc-muted">Word / PowerPoint / Excel &rarr; PDF, PDF &rarr; Word, images &harr; PNG/JPG/WEBP/PDF, video &rarr; MP3/MP4.</p>
+          </div>
+
           <div class="pc-card pc-wide">
             <h3><i class="fa-solid fa-folder-open"></i> Files <span id="pc-path" class="pc-muted"></span></h3>
             <div id="pc-files" class="pc-list"></div>

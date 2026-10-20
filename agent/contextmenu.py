@@ -18,7 +18,9 @@ VID = ".mp4 .mkv .mov .webm .avi .m4v"
 MENU = [
     ("to-png", "Convert to PNG", ".webp .heic .heif .avif .jpg .jpeg .bmp"),
     ("to-jpg", "Convert to JPG", ".webp .heic .heif .avif .png .bmp"),
-    ("docx-pdf", "Convert to PDF", ".docx .doc"),
+    ("to-pdf", "Convert to PDF", ".docx .doc .rtf .odt .pptx .ppt .xlsx .xls .csv " + IMG),
+    ("pdf-docx", "Convert to Word (DOCX)", ".pdf"),
+    ("to-mp4", "Convert to MP4 (H.264)", ".mkv .mov .avi .webm .wmv .flv"),
     ("to-mp3", "Extract MP3", VID),
     ("shrink-mp4", "Shrink under 25 MB", VID),
     ("rembg", "Remove Background (GPU)", IMG),

@@ -7,7 +7,7 @@ pywin32>=306  # clipboard, Word COM, shortcuts
 winotify>=1.1  # toasts
 keyboard>=0.13  # global snip hotkey
 watchdog>=4.0  # Downloads router
-yt-dlp[default]>=2025.10  # [default] adds the YouTube JS challenge solver
+yt-dlp[default,curl-cffi]>=2025.10  # JS challenge solver + browser impersonation (fewer 429s)
 imageio-ffmpeg>=0.5  # bundled ffmpeg if none on PATH
 pillow>=11
 pillow-heif>=0.18
@@ -26,3 +26,4 @@ nvidia-cuda-runtime-cu12
 nvidia-cufft-cu12
 nvidia-curand-cu12
 nvidia-cuda-nvrtc-cu12
+pdf2docx>=0.5.8  # PDF -> Word

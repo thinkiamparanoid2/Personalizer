@@ -5,6 +5,7 @@ Output: <notes_dir>/<title>/notes.md + frames/*.jpg
 """
 import re
 import tempfile
+import threading
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -85,6 +86,7 @@ def paragraphs(segments, every=30):
 
 # ---------- transcription ----------
 _whisper = {}
+_whisper_lock = threading.Lock()
 
 
 def transcribe(audio_path, job=None, model=None):
@@ -93,8 +95,11 @@ def transcribe(audio_path, job=None, model=None):
 
     def run(device, compute):
         key = (name, device, compute)
-        if key not in _whisper:
-            _whisper[key] = WhisperModel(name, device=device, compute_type=compute)
+        with _whisper_lock:  # parallel jobs share one loaded model
+            if key not in _whisper:
+                if job:
+                    job.progress(f"loading Whisper {name} (first use downloads it, ~1.6 GB for large)")
+                _whisper[key] = WhisperModel(name, device=device, compute_type=compute)
         segments, info = _whisper[key].transcribe(str(audio_path), vad_filter=True, beam_size=5)
         out = []
         for seg in segments:
@@ -182,10 +187,18 @@ def notes_from_url(job, url, force_whisper=False, frames=True):
         tmp = Path(tmp)
         job.progress("fetching captions")
         base = ytdlp_opts()
-        with yt_dlp.YoutubeDL(base | {"skip_download": True, "writesubtitles": True,
-                                      "writeautomaticsub": True, "subtitleslangs": ["en", "en-orig"],
-                                      "subtitlesformat": "vtt", "outtmpl": str(tmp / "cap.%(ext)s")}) as ydl:
-            info = ydl.extract_info(url, download=True)
+        try:
+            with yt_dlp.YoutubeDL(base | {"skip_download": True, "writesubtitles": True,
+                                          "writeautomaticsub": True, "subtitleslangs": ["en", "en-orig"],
+                                          "subtitlesformat": "vtt", "outtmpl": str(tmp / "cap.%(ext)s")}) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except yt_dlp.utils.DownloadError as e:
+            if "subtitle" not in str(e).lower():
+                raise
+            # YouTube rate-limits caption downloads (HTTP 429); transcribe the audio instead.
+            job.progress("captions blocked by YouTube, using Whisper")
+            with yt_dlp.YoutubeDL(base | {"skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
         title = info.get("title") or "Lecture"
         manual = "en" in (info.get("subtitles") or {})
         english = (info.get("language") or "en").startswith("en")

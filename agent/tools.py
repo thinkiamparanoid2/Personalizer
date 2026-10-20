@@ -91,9 +91,105 @@ def convert_image(path, to="png"):
     out = unique_path(path.with_suffix(f".{to}"))
     if to == "jpg":
         img.convert("RGB").save(out, "JPEG", quality=92)
+    elif to == "webp":
+        img.save(out, "WEBP", quality=90)
     else:
         img.save(out, "PNG")
     return out
+
+
+WORD_EXT = {".doc", ".docx", ".rtf", ".odt", ".txt"}
+PPT_EXT = {".ppt", ".pptx", ".odp"}
+EXCEL_EXT = {".xls", ".xlsx", ".csv", ".ods"}
+VIDEO_EXT = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v", ".wmv", ".flv"}
+AUDIO_EXT = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".opus", ".wma"}
+
+
+def _office(app_name):
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+    app = win32com.client.DispatchEx(app_name)
+    try:
+        app.DisplayAlerts = 0
+    except Exception:
+        pass
+    return app
+
+
+def office_to_pdf(path):
+    """Word / PowerPoint / Excel -> PDF through the installed Office apps."""
+    import pythoncom
+    path = Path(path).resolve()
+    ext = path.suffix.lower()
+    if ext in WORD_EXT:
+        return docx_to_pdf(path)
+    out = unique_path(path.with_suffix(".pdf"))
+    if ext in PPT_EXT:
+        app = _office("PowerPoint.Application")
+        try:
+            pres = app.Presentations.Open(str(path), ReadOnly=True, WithWindow=False)
+            pres.SaveAs(str(out), 32)  # ppSaveAsPDF
+            pres.Close()
+        finally:
+            app.Quit()
+            pythoncom.CoUninitialize()
+    else:
+        app = _office("Excel.Application")
+        try:
+            book = app.Workbooks.Open(str(path), ReadOnly=True)
+            book.ExportAsFixedFormat(0, str(out))  # xlTypePDF
+            book.Close(False)
+        finally:
+            app.Quit()
+            pythoncom.CoUninitialize()
+    return out
+
+
+def pdf_to_docx(path):
+    """PDF -> editable DOCX with pdf2docx (no Word needed; Word's own PDF import blocks on hidden prompts)."""
+    from pdf2docx import Converter
+    path = Path(path).resolve()
+    out = unique_path(path.with_suffix(".docx"))
+    cv = Converter(str(path))
+    try:
+        cv.convert(str(out))
+    finally:
+        cv.close()
+    return out
+
+
+def to_mp4(path):
+    path = Path(path)
+    out = unique_path(path.with_suffix(".mp4") if path.suffix.lower() != ".mp4" else path.with_name(f"{path.stem}_h264.mp4"))
+    common = ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+    try:
+        run_ffmpeg("-i", path, "-c:v", "h264_nvenc", "-preset", "p5", "-cq", "23", *common, out)
+    except RuntimeError:
+        run_ffmpeg("-i", path, "-c:v", "libx264", "-crf", "22", *common, out)
+    return out
+
+
+def convert(path, target):
+    """Convert one file to `target` (pdf, docx, png, jpg, webp, mp3, mp4, mp4-25mb). Returns output path."""
+    path = Path(path)
+    ext, target = path.suffix.lower(), target.lower().lstrip(".")
+    if target == "pdf" and ext in WORD_EXT | PPT_EXT | EXCEL_EXT:
+        return office_to_pdf(path)
+    if target == "pdf" and ext in IMAGE_EXT:
+        out = pdf_merge([path])
+        return out.rename(unique_path(path.with_suffix(".pdf")))
+    if target == "docx" and ext == ".pdf":
+        return pdf_to_docx(path)
+    if target in ("png", "jpg", "webp") and ext in IMAGE_EXT:
+        return convert_image(path, target)
+    if target == "mp3" and ext in VIDEO_EXT | AUDIO_EXT:
+        return to_mp3(path)
+    if target == "mp4" and ext in VIDEO_EXT:
+        return to_mp4(path)
+    if target == "mp4-25mb" and ext in VIDEO_EXT:
+        return shrink_mp4(path)
+    raise ValueError(f"Can't convert {ext or 'this file'} to {target}")
 
 
 def docx_to_pdf(path):

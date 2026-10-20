@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import command as cmdbar, config, files, jobs, media, notes, osctl, signing, tools
 from .paths import resolve_allowed
-from .util import safe_name, unique_path
+from .util import ffmpeg, media_codecs, safe_name, unique_path
 
 cfg = config.load()
 TOKEN = cfg["token"].encode()
@@ -98,12 +98,35 @@ class StreamLink(BaseModel):
     path: str
 
 
+# Browsers play H.264/VP9/AV1(/HEVC on most GPUs) video and AAC/MP3/Opus/Vorbis/FLAC audio.
+BROWSER_VIDEO = {"h264", "vp8", "vp9", "av1", "hevc"}
+BROWSER_AUDIO = {"aac", "mp3", "opus", "vorbis", "flac"}
+
+
 @api.post("/stream-link")
 def stream_link(body: StreamLink):
     path = str(_resolve_file(body.path))
     exp = int(time.time()) + signing.TTL
     sig = signing.sign(path, exp, STREAM_SECRET)
-    return {"url": "/api/stream?" + urlencode({"path": path, "exp": exp, "sig": sig}), "exp": exp}
+    query = urlencode({"path": path, "exp": exp, "sig": sig})
+    video, audio = media_codecs(path)
+    return {"url": "/api/stream?" + query, "compat_url": "/api/stream-compat?" + query, "exp": exp,
+            "video": video, "audio": audio,
+            # e.g. x265 + AC3/DTS movie rips: picture plays but the browser has no sound
+            "transcode": bool(video) and (video not in BROWSER_VIDEO or (audio is not None and audio not in BROWSER_AUDIO))}
+
+
+class OpenVlc(BaseModel):
+    path: str
+
+
+@api.post("/open-vlc")
+def open_vlc(body: OpenVlc):
+    """On the PC itself vlc:// links don't work (Windows VLC doesn't register them); launch VLC directly."""
+    import subprocess
+    real = _resolve_file(body.path)
+    subprocess.Popen([cfg["vlc_exe"], str(real)])
+    return {"opened": str(real)}
 
 
 # ---------- 2.1 OS control ----------
@@ -247,6 +270,15 @@ def make_notes(body: Notes):
     raise ValueError("url or path required")
 
 
+@api.post("/reveal")
+def reveal(body: PathBody):
+    """Open Explorer with the file selected (e.g. a finished download)."""
+    import subprocess
+    real = resolve_allowed(body.path)
+    subprocess.Popen(["explorer", f"/select,{real}"])
+    return {"revealed": str(real)}
+
+
 @api.get("/jobs")
 def job_list():
     return jobs.recent()
@@ -289,6 +321,13 @@ async def pdf_compress(item: UploadFile = File(...), target_kb: int = Form(2048)
     return _send(out, workdir)
 
 
+@api.post("/convert")
+async def convert(item: UploadFile = File(...), target: str = Form(...)):
+    workdir = Path(tempfile.mkdtemp(prefix="jarvis_"))
+    src = (await _save_uploads([item], workdir))[0]
+    return _send(await run_in_threadpool(tools.convert, src, target), workdir)
+
+
 @api.post("/pdf/stamp")
 async def pdf_stamp(item: UploadFile = File(...)):
     workdir = Path(tempfile.mkdtemp(prefix="jarvis_"))
@@ -296,6 +335,34 @@ async def pdf_stamp(item: UploadFile = File(...)):
 
 
 app.include_router(api)
+
+
+@app.get("/api/stream-compat")
+def stream_compat(request: Request, path: str, exp: int | None = None, sig: str | None = None, t: float = 0):
+    """Live re-encode for the browser: copies browser-playable video, converts audio to stereo AAC.
+    ponytail: no seeking within the stream (restart with ?t=seconds); VLC handles everything natively."""
+    import subprocess
+    from starlette.responses import StreamingResponse
+    if not (_bearer_ok(request) or (exp is not None and sig is not None
+                                    and signing.verify(path, exp, sig, STREAM_SECRET))):
+        raise _unauthorized()
+    real = _resolve_file(path)
+    video, _audio = media_codecs(real)
+    vcodec = ["-c:v", "copy"] if video in BROWSER_VIDEO else ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23"]
+    proc = subprocess.Popen(
+        [ffmpeg(), "-hide_banner", "-loglevel", "error", "-ss", str(max(0.0, t)), "-i", str(real),
+         "-map", "0:v:0", "-map", "0:a:0?", *vcodec, "-c:a", "aac", "-ac", "2", "-b:a", "192k",
+         "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "pipe:1"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def chunks():
+        try:
+            while data := proc.stdout.read(1 << 16):
+                yield data
+        finally:  # client closed the player
+            proc.kill()
+
+    return StreamingResponse(chunks(), media_type="video/mp4")
 
 
 # Outside the Bearer-only router: <video src> and vlc:// can't send headers, so a signed URL also works.
