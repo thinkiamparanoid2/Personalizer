@@ -144,3 +144,6 @@ agent/state.json
 
 # CodeGraph index
 .codegraph/
+
+# Firebase deploy cache
+.firebase/
