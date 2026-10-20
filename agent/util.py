@@ -117,11 +117,18 @@ def gemini_generate(contents, config=None, fast=False, timeout_s=None):
     raise RuntimeError(f"All Gemini models failed: {str(last)[:200]}")
 
 
-def notify(title, msg=""):
-    """Windows toast; silently skipped if winotify is unavailable."""
+ICON = Path(__file__).resolve().parent.parent / "icon-192.png"
+
+
+def notify(title, msg="", launch="", long=False, sound=False):
+    """Windows toast (Farvis icon); clicking it opens `launch`. Silently skipped if winotify is unavailable."""
     try:
-        from winotify import Notification
-        Notification(app_id="Jarvis", title=title, msg=str(msg)[:250]).show()
+        from winotify import Notification, audio
+        toast = Notification(app_id="Farvis", title=title, msg=str(msg)[:400], icon=str(ICON) if ICON.exists() else "",
+                             duration="long" if long else "short", launch=launch)
+        if sound:
+            toast.set_audio(audio.Reminder, loop=False)
+        toast.show()
     except Exception:
         print(f"[notify] {title}: {msg}")
 

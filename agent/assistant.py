@@ -36,6 +36,15 @@ SERVER_TOOLS = [
     _fn("make_study_notes", "Generate Markdown study notes from a lecture video URL (runs in the background).",
         {"url": {"type": "string"}}, ["url"]),
     _fn("check_jobs", "Status of recent downloads and study-notes jobs."),
+    _fn("set_reminder", "Set a reminder that pops up on the PC (and phone if configured) at a given time.",
+        {"text": {"type": "string", "description": "What to remind about"},
+         "at": {"type": "string", "description": "Local date-time YYYY-MM-DDTHH:MM, resolved from relative "
+                                                 "phrases like 'in 20 minutes' or 'tomorrow 9am' using the current time"}},
+        ["text", "at"]),
+    _fn("list_reminders", "List upcoming custom reminders."),
+    _fn("cancel_reminder", "Cancel a custom reminder by its id (get ids from list_reminders).",
+        {"id": {"type": "string"}}, ["id"]),
+    _fn("get_briefing", "Today's briefing: deadlines today and this week, reminders, shopping, weather."),
 ]
 
 CLIENT_TOOLS = [
@@ -62,7 +71,7 @@ CLIENT_TOOLS = [
 CLIENT_NAMES = {f.name for f in CLIENT_TOOLS}
 
 SYSTEM = """You are Farvis, {name}'s personal assistant, running on their Windows PC and web app.
-Now: {now}. Timezone: {tz}.
+Now: {now}. Timezone: {tz}. Use this to resolve times like "in 20 minutes" or "tomorrow 9am".
 Be brief and friendly, like a capable human assistant: one to three sentences unless asked for detail.
 Use the tools to act or to look things up; never invent the user's events, items or files.
 Resolve relative dates ("Thursday", "next week") to YYYY-MM-DD from today's date before calling tools.
@@ -72,7 +81,7 @@ For general questions, answer from your own knowledge."""
 
 
 def _run_server_tool(name, args):
-    from . import command, jobs, media, notes, osctl, tools
+    from . import command, jobs, media, notes, osctl, reminders, tools
     try:
         if name in ("media_control", "set_audio_output"):
             import comtypes
@@ -90,6 +99,15 @@ def _run_server_tool(name, args):
         if name == "make_study_notes":
             job = jobs.submit("notes", notes.notes_from_url, args["url"])
             return {"started": True, "job_id": job["id"], "note": "takes a few minutes"}
+        if name == "set_reminder":
+            return {"ok": True, "reminder": reminders.add(args["text"], args["at"])}
+        if name == "list_reminders":
+            return {"reminders": reminders.list_custom()}
+        if name == "cancel_reminder":
+            return reminders.cancel(args["id"])
+        if name == "get_briefing":
+            title, body = reminders.brief()
+            return {"briefing": f"{title}. {body}"}
         if name == "check_jobs":
             return {"jobs": [{"kind": j["kind"], "status": j["status"], "progress": j["progress"],
                               "title": (j.get("result") or {}).get("title"), "error": j["error"]}

@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
-from . import command as cmdbar, config, files, jobs, media, notes, osctl, signing, tools
+from . import command as cmdbar, config, files, reminders, jobs, media, notes, osctl, signing, tools
 from .paths import resolve_allowed
 from .util import ffmpeg, media_codecs, safe_name, unique_path
 
@@ -60,7 +60,7 @@ async def lifespan(_app):
     warm = lambda: threading.Thread(target=cmdbar.warm_up, daemon=True).start()  # noqa: E731
     for name, start in (("downloads watcher", watcher.start if cfg["watch_downloads"] else None),
                         ("snip hotkey", snip.start), ("yt-dlp update", tools.maybe_update_ytdlp),
-                        ("voice model warm-up", warm)):
+                        ("voice model warm-up", warm), ("reminders", reminders.start)):
         if start:
             try:
                 start()
@@ -191,6 +191,55 @@ async def run_voice(audio: UploadFile = File(...)):
         return {"heard": "", "did": "Didn't catch that - try again."}
     cmd = await run_in_threadpool(cmdbar.interpret, heard)
     return await cmdbar.dispatch(cmd, False, heard)
+
+
+# ---------- Reminders & morning brief ----------
+@api.post("/sync")
+def sync_planner(body: dict):
+    return reminders.sync(body)
+
+
+@api.get("/reminders")
+def reminder_list():
+    return reminders.list_custom()
+
+
+class ReminderBody(BaseModel):
+    text: str
+    at: str  # local YYYY-MM-DDTHH:MM
+
+
+@api.post("/reminders")
+def reminder_add(body: ReminderBody):
+    return reminders.add(body.text, body.at)
+
+
+class ReminderId(BaseModel):
+    id: str
+
+
+@api.post("/reminders/cancel")
+def reminder_cancel(body: ReminderId):
+    return reminders.cancel(body.id)
+
+
+@api.get("/weather")
+def weather_get():
+    return {"weather": reminders.weather()}
+
+
+@api.get("/brief")
+def brief_get():
+    title, body = reminders.brief()
+    return {"title": title, "body": body}
+
+
+@api.post("/brief/send")
+def brief_send():
+    """Deliver the morning brief now (Home "Brief me" button / testing)."""
+    title, body = reminders.brief()
+    reminders._deliver(title, body)
+    return {"title": title, "body": body}
 
 
 # ---------- Farvis chat assistant ----------

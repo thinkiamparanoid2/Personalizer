@@ -8,8 +8,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,
 const agentReady = () => !!(agent().url && agent().token);
 const isoToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
-const SUGGESTIONS = ["What's due this week?", 'Add milk to my shopping list', 'Play lofi on YouTube',
-  'Add a CSE330 quiz next Monday', 'Pause the music', 'What should I watch next?'];
+const SUGGESTIONS = ["What's due this week?", 'Remind me in 20 minutes to stretch', 'Add milk to my shopping list',
+  'Play lofi on YouTube', 'Add a CSE330 quiz next Monday', 'What should I watch next?'];
 
 // ---------- Home ----------
 function greeting() {
@@ -54,6 +54,61 @@ function renderHome() {
     : '<p class="pc-muted">Watchlist is empty. Add titles with the IMDb button.</p>';
 }
 
+// ---------- Reminders, brief, weather (the agent delivers them even when this app is closed) ----------
+let syncTimer = null;
+function syncPlanner() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    const f = window.farvis;
+    if (!agentReady() || !f) return;
+    try {
+      await api('/api/sync', { method: 'POST', json: {
+        academic: f.data.academic.map(({ type, title, date }) => ({ type, title, date })),
+        shopping_pending: f.data.shopping.filter(i => !i.bought).length,
+        name: f.userName(),
+        app_url: location.origin + location.pathname
+      } });
+    } catch { /* agent offline: next change syncs */ }
+  }, 3000);
+}
+
+async function renderReminders() {
+  const box = $('home-reminders');
+  if (!box) return;
+  if (!agentReady()) { box.innerHTML = '<p class="pc-muted">Connect the PC agent to get reminders.</p>'; return; }
+  try {
+    const list = await api('/api/reminders');
+    box.innerHTML = list.length ? list.slice(0, 6).map(r => {
+      const at = new Date(r.at);
+      const when = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : at.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      return `<div class="home-item"><span class="badge">${esc(when)}</span><span class="home-item-title">${esc(r.text)}</span>
+        <button class="icon-btn" onclick="farvisCancelReminder('${esc(r.id)}')" aria-label="Cancel reminder"><i class="fa-solid fa-xmark"></i></button></div>`;
+    }).join('') : '<p class="pc-muted">No reminders. Try: <i>"remind me at 6pm to call Ammu"</i>.</p>';
+  } catch { box.innerHTML = '<p class="pc-muted">PC agent offline.</p>'; }
+}
+
+async function cancelReminder(id) {
+  await api('/api/reminders/cancel', { method: 'POST', json: { id } });
+  renderReminders();
+}
+
+async function briefMe() {
+  try {
+    const r = await api('/api/brief/send', { method: 'POST' });
+    openDrawer();
+    addMsg('farvis', `<b>${esc(r.title)}</b><br>${esc(r.body).replace(/\n/g, '<br>')}`);
+  } catch (e) { window.showToast?.(e.message); }
+}
+
+async function renderWeather() {
+  if (!agentReady() || !$('home-weather')) return;
+  try {
+    const { weather } = await api('/api/weather');
+    $('home-weather').textContent = weather ? `Today: ${weather}` : '';
+  } catch { /* offline */ }
+}
+
 async function refreshPcStatus() {
   const el = $('home-pc-status');
   if (!el) return;
@@ -69,10 +124,12 @@ async function refreshPcStatus() {
   }
 }
 
-window.addEventListener('farvis-data', renderHome);
+window.addEventListener('farvis-data', () => { renderHome(); syncPlanner(); });
 document.addEventListener('DOMContentLoaded', () => {
   renderHome();
   refreshPcStatus();
+  renderReminders();
+  renderWeather();
   $('home-suggestions').innerHTML = SUGGESTIONS.map(s =>
     `<button class="suggestion" type="button">${esc(s)}</button>`).join('');
   $('home-suggestions').addEventListener('click', e => {
@@ -80,7 +137,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   renderWelcome();
 });
-setInterval(() => { renderHome(); refreshPcStatus(); }, 60000);
+setInterval(() => { renderHome(); refreshPcStatus(); renderReminders(); }, 60000);
+setInterval(renderWeather, 3600000);
 
 // ---------- Assistant ----------
 let session = sessionStorage.getItem('farvisSession');
@@ -112,7 +170,9 @@ function chip(tool, result) {
     play_youtube: (result.title || result.url) && `Playing: ${result.title || result.url}`,
     set_audio_output: result.switched_to && `Audio → ${result.switched_to}`,
     download_video: result.started && 'Download started',
-    make_study_notes: result.started && 'Study notes started'
+    make_study_notes: result.started && 'Study notes started',
+    set_reminder: result.reminder && `Reminder: ${result.reminder.text} · ${new Date(result.reminder.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
+    cancel_reminder: result.cancelled && 'Reminder cancelled'
   }[tool];
   return text ? `<span class="action-chip"><i class="fa-solid fa-check"></i> ${esc(text)}</span>` : '';
 }
@@ -169,6 +229,7 @@ async function ask(text) {
       r = await api('/api/assistant', { method: 'POST', json: { session, tool_results: results, context: context() } });
     }
     const chips = (r.actions || []).map(a => chip(a.tool, a.result)).join('');
+    if ((r.actions || []).some(a => /reminder/.test(a.tool))) renderReminders();
     bubble.innerHTML = md(r.reply || 'Done.') + (chips ? `<div class="chips">${chips}</div>` : '');
   } catch (e) {
     bubble.textContent = /Failed to fetch|NetworkError/i.test(e.message) ? 'Your PC agent seems offline.'
@@ -234,5 +295,5 @@ document.addEventListener('keydown', e => {
 
 Object.assign(window, {
   farvisAsk: ask, farvisSend: sendFrom, farvisVoice: voice, farvisToggle: toggleDrawer,
-  farvisClose: closeDrawer, farvisNewChat: newChat
+  farvisClose: closeDrawer, farvisNewChat: newChat, farvisCancelReminder: cancelReminder, farvisBrief: briefMe
 });

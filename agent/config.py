@@ -58,6 +58,13 @@ def _defaults():
         "opensubtitles_username": "",
         "opensubtitles_password": "",
         "snip_hotkey": "alt+s",
+        # Reminders: morning brief + evening "due tomorrow" (24h HH:MM, PC local time).
+        "brief_time": "08:00",
+        "evening_reminder_time": "20:00",
+        "weather_lat": 23.81,  # Dhaka; set to null to drop weather from the brief
+        "weather_lon": 90.41,
+        "speak_brief": False,  # read the morning brief aloud
+        "ntfy_topic": "",  # optional phone push via the ntfy app (pick a long random topic name)
         "share_ttl_minutes": 60,
         "watch_downloads": True,
     }

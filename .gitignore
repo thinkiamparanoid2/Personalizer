@@ -149,3 +149,4 @@ agent/state.json
 .firebase/
 agent/agent.log
 agent/last_voice.*
+agent/reminders.json

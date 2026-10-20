@@ -719,3 +719,10 @@ h1, h2, h3, .section-title, .brand { font-family: 'Space Grotesk', 'Inter', sans
 .chat-input input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--input-border);
   background: var(--bg-light); color: var(--text-dark); outline: none; font-size: 0.95rem; }
 .chat-input input:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.home-weather { color: var(--text-gray); font-size: 0.85rem; margin-top: 2px; }
+.pc-card h3 .text-btn { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 0.78rem; min-height: 0;
+  padding: 4px 10px; border-radius: 999px; }
+.icon-btn { background: none !important; border: none !important; color: var(--text-gray) !important; cursor: pointer;
+  min-height: 0 !important; padding: 2px 6px !important; }
+.icon-btn:hover { color: #ef4444 !important; }
