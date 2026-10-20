@@ -62,14 +62,12 @@ if (window.matchMedia('(display-mode: standalone)').matches) {
 
 async function installApp() {
   if (!deferredPrompt) {
-    return alert("Install from the browser menu:
-
-" +
-      "Brave: menu (≡, top right) -> Save and share -> Install page as app
-" +
-      "Chrome/Edge: the install icon at the right of the address bar
-" +
-      "Android: menu -> Add to Home screen / Install app");
+    return alert([
+      "Install from the browser menu:", "",
+      "Brave: menu (≡, top right) -> Save and share -> Install page as app",
+      "Chrome/Edge: the install icon at the right of the address bar",
+      "Android: menu -> Add to Home screen / Install app"
+    ].join("\n"));
   }
   deferredPrompt.prompt();
   await deferredPrompt.userChoice;
