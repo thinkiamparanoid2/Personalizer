@@ -18,7 +18,7 @@ MEDIA = Literal["volume_up", "volume_down", "mute", "play_pause", "next", "prev"
 
 
 class Command(BaseModel):
-    action: Literal["media", "play_yt", "open_app", "power", "audio_device", "ytdl", "none"]
+    action: Literal["media", "play_yt", "open_app", "close_app", "power", "audio_device", "ytdl", "none"]
     media: Optional[MEDIA] = None
     query: Optional[str] = None  # YouTube search, audio device hint, or video URL
     power: Optional[Literal["lock", "sleep", "shutdown", "cancel"]] = None
@@ -72,6 +72,8 @@ def parse_rules(text):
     if re.fullmatch(r"(what('s| is) the )?time( is it)?( now)?|what time is it( now)?", t):
         from datetime import datetime
         return Command(action="none", say=datetime.now().strftime("It's %I:%M %p.").replace(" 0", " "))
+    if m := re.fullmatch(r"(?:close|quit|exit|kill|terminate)\s+(.+)", t):
+        return Command(action="close_app", query=m.group(1))
     if m := re.fullmatch(r"(?:open|launch|start|run)\s+(.+?)\s+(?:on|from) youtube", t):
         return Command(action="play_yt", query=m.group(1))
     if m := re.fullmatch(r"(?:open|launch|start|run|fire up)\s+(?:up\s+)?(.+)", t):
@@ -84,11 +86,12 @@ def parse_rules(text):
 
 
 PROMPT = """You turn a spoken request into one command for a Windows PC. Reply with JSON only:
-{{"action": "media|play_yt|open_app|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
+{{"action": "media|play_yt|open_app|close_app|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
 "query": "...", "power": "lock|sleep|shutdown|cancel", "delay_s": 0, "format": "mp4|mp3", "say": "..."}}
 - media: playback/volume keys.
 - play_yt: query = what to search and play on YouTube.
 - open_app: query = name of an installed PC app or game to launch (e.g. "Riot Client", "Discord").
+- close_app: query = name of a running app to close.
 - audio_device: query = output device hint, e.g. "headphones" or "speakers".
 - power: delay_s = seconds from now (0 = now).
 - ytdl: query = the video URL to download; format mp3 for audio only.
@@ -183,6 +186,9 @@ def execute(cmd):
     if cmd.action == "play_yt":
         r = osctl.play_yt(cmd.query or "")
         return f"Playing {r.get('title') or r['url']}"
+    if cmd.action == "close_app":
+        r = osctl.close_app(cmd.query or "")
+        return f"Closed {r['closed']}" if "closed" in r else f"Asked {r['closing']} to close ({r['note']})"
     if cmd.action == "open_app":
         return f"Opening {osctl.open_app(cmd.query or '')['opened']}"
     if cmd.action == "audio_device":
@@ -239,6 +245,22 @@ def _self_check():
     assert match_app("vlc", apps)["AppID"] == "vlc"
     assert match_app("discord", apps)["AppID"] == "dc"
     assert match_app("photoshop", apps) is None
+    assert r("close riot client") == ("close_app", "riot client", 0)
+    assert r("quit discord") == ("close_app", "discord", 0)
+    from .osctl import select_targets
+    apps_real = [{"Name": "Riot Client", "AppID": r"F:\Riot Games\Riot Client\RiotClientServices.exe"},
+                 {"Name": "Discord", "AppID": "com.squirrel.Discord.Discord"}]
+    procs = [{"Id": 1, "ProcessName": "Riot Client", "Description": "Riot Client", "Path": r"F:\Riot Games\Riot Client\RiotClientElectron\Riot Client.exe"},
+             {"Id": 2, "ProcessName": "RiotClientServices", "Description": "Riot Client", "Path": r"F:\Riot Games\Riot Client\RiotClientServices.exe"},
+             {"Id": 3, "ProcessName": "vgtray", "Description": "Vanguard Tray", "Path": r"C:\Program Files\Riot Vanguard\vgtray.exe"},
+             {"Id": 4, "ProcessName": "Discord", "Description": "Discord", "Path": r"C:\Users\x\AppData\Local\Discord\app-1\Discord.exe"},
+             {"Id": 5, "ProcessName": "explorer", "Description": "Windows Explorer", "Path": r"C:\Windows\explorer.exe"}]
+    label, t = select_targets("riot client", apps_real, procs)
+    assert label == "Riot Client" and sorted(p["Id"] for p in t) == [1, 2], (label, t)  # not Vanguard
+    label, t = select_targets("discord", apps_real, procs)
+    assert [p["Id"] for p in t] == [4], t                       # Store-style AppID: matched by description
+    assert select_targets("windows explorer", apps_real, procs)[1] == []   # never Windows processes
+    assert select_targets("photoshop", apps_real, procs)[1] == []
     c = parse_rules("download https://www.youtube.com/watch?v=abc as mp3")
     assert (c.action, c.query, c.format) == ("ytdl", "https://www.youtube.com/watch?v=abc", "mp3")
     assert parse_rules("what's the weather tomorrow") is None

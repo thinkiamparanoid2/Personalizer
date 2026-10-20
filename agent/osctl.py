@@ -90,6 +90,65 @@ def open_app(name):
     return {"opened": app["Name"]}
 
 
+# --- Close apps: graceful first, force only background leftovers ---
+PROTECTED = {"explorer", "svchost", "csrss", "winlogon", "lsass", "services", "smss", "wininit", "dwm",
+             "system", "registry", "python", "pythonw", "conhost", "powershell", "cmd", "taskmgr"}
+
+
+def _processes():
+    import json
+    ps = ("Get-Process | Where-Object { $_.Path } | Select-Object Id, ProcessName, Description, MainWindowTitle, Path, "
+          "@{n='Win';e={[int64]$_.MainWindowHandle}} | ConvertTo-Json -Compress")
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", creationflags=NO_WINDOW, timeout=30)
+    procs = json.loads(out.stdout or "[]")
+    return procs if isinstance(procs, list) else [procs]
+
+
+def select_targets(name, apps, procs):
+    """(label, processes) to close for a spoken app name. Scoped to the app's install folder when known,
+    otherwise to processes whose description/name matches; Windows and protected processes are never picked."""
+    import re
+    procs = [p for p in procs if p.get("Path") and not p["Path"].lower().startswith("c:\\windows")
+             and p.get("ProcessName", "").lower() not in PROTECTED]
+    app = match_app(name, apps)
+    if app and re.match(r"^[a-zA-Z]:\\", app.get("AppID", "")):
+        folder = str(Path(app["AppID"]).parent).lower().rstrip("\\")
+        # skip folders that are just a drive or a generic Program Files root
+        if folder.count("\\") >= 1 and not re.fullmatch(r"[a-z]:\\program files( \(x86\))?", folder):
+            hits = [p for p in procs if p["Path"].lower().startswith(folder + "\\")]
+            if hits:
+                return app["Name"], hits
+    named = [{"Name": p.get("Description") or p["ProcessName"], "AppID": str(p["Id"])} for p in procs]
+    best = match_app(name, named)
+    if not best:
+        return None, []
+    return best["Name"], [p for p in procs if (p.get("Description") or p["ProcessName"]) == best["Name"]]
+
+
+def close_app(name):
+    import time
+    label, targets = select_targets(name, installed_apps(), _processes())
+    if not targets:
+        raise ValueError(f"'{name}' doesn't seem to be running")
+    ids = ",".join(str(p["Id"]) for p in targets)
+    # 1) ask windows to close (apps with unsaved work show their own save prompt)
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    f"Get-Process -Id {ids} -ErrorAction SilentlyContinue | ForEach-Object {{ [void]$_.CloseMainWindow() }}"],
+                   creationflags=NO_WINDOW, timeout=30)
+    time.sleep(4)
+    alive = {p["Id"]: p for p in _processes()}
+    left = [alive[p["Id"]] for p in targets if p["Id"] in alive]
+    if any(p.get("Win") for p in left):
+        return {"closing": label, "note": "a window is still open (maybe asking to save)"}
+    # 2) only background/tray leftovers remain: stop them
+    if left:
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"Stop-Process -Id {','.join(str(p['Id']) for p in left)} -Force -ErrorAction SilentlyContinue"],
+                       creationflags=NO_WINDOW, timeout=30)
+    return {"closed": label}
+
+
 # --- Default audio endpoint: undocumented-but-stable IPolicyConfig (what the Sound panel uses). ---
 class IPolicyConfig(IUnknown):
     _iid_ = GUID("{f8679f50-850a-41cf-9c72-430f290290c8}")
