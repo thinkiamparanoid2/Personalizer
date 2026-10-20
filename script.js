@@ -26,6 +26,9 @@ let dek = null;
 let keyDoc;                     // undefined = loading, null = no vault yet, else keys/{uid}
 let vaultDocs = [], credDocs = [], chipDocs = [];
 const vaultItems = new Map(), credItems = new Map(), movieItems = new Map(), chipItems = new Map();
+// Latest Firestore data for the home screen and the assistant (vault/credentials deliberately excluded).
+const appData = { academic: [], shopping: [] };
+const dataChanged = () => window.dispatchEvent(new CustomEvent('farvis-data'));
 const OWNED_COLLECTIONS = ['vault', 'credentials', 'movies', 'academic', 'shopping'];
 const AUTO_LOCK_MS = 5 * 60 * 1000;
 
@@ -348,6 +351,8 @@ async function saveAcademicEvent() {
 
 function listenToAcademic() {
   return onSnapshot(query(collection(db, "academic"), where("owner", "==", uid)), (snapshot) => {
+    appData.academic = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    dataChanged();
     const container = document.getElementById('academic-list');
     if (!container) return;
     container.innerHTML = snapshot.docs.map(docSnap => {
@@ -933,6 +938,7 @@ function listenToMovies() {
       (movie.status === 'watched' ? watchedHTML : planHTML).push(html);
     });
     const noMedia = emptyState('fa-film', 'Nothing here yet. Search a title above, or use the IMDb buttons in Brave.');
+    dataChanged();
     watchedList.innerHTML = watchedHTML.join('') || noMedia;
     planList.innerHTML    = planHTML.join('') || noMedia;
   });
@@ -994,6 +1000,8 @@ async function saveShoppingItem() {
 
 function listenToShopping() {
   return onSnapshot(query(collection(db, "shopping"), where("owner", "==", uid)), (snapshot) => {
+    appData.shopping = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    dataChanged();
     const container = document.getElementById('shopping-list');
     if (!container) return;
     container.innerHTML = snapshot.docs.map(docSnap => {
@@ -1045,6 +1053,63 @@ async function deleteDocItem(collectionName, docId) {
     showToast("Deleted!");
   }
 }
+
+// ==========================================
+// --- FARVIS ASSISTANT: app-data tools ---
+// ==========================================
+const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const daysUntil = iso => Math.round((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 86400000);
+
+function upcomingEvents(daysAhead = 30) {
+  return appData.academic
+    .filter(e => e.date && daysUntil(e.date) >= 0 && daysUntil(e.date) <= daysAhead)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const farvisTools = {
+  list_academic_events({ days_ahead = 30 } = {}) {
+    return { today: todayISO(), events: upcomingEvents(days_ahead).map(({ type, title, date }) =>
+      ({ type, title, date, days_left: daysUntil(date) })) };
+  },
+  add_academic_event({ type, title, date }) {
+    if (!['Quiz', 'Assignment', 'Lab Test'].includes(type)) type = 'Assignment';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !title) return { error: 'need title and YYYY-MM-DD date' };
+    addDoc(collection(db, "academic"), { type, title, date, owner: uid, createdAt: serverTimestamp() }); // offline-safe
+    return { ok: true, added: { type, title, date } };
+  },
+  list_shopping_items({ include_bought = false } = {}) {
+    return { items: appData.shopping.filter(i => include_bought || !i.bought)
+      .map(({ desc, price, bought }) => ({ description: desc, price: price || '', bought: !!bought })) };
+  },
+  add_shopping_item({ description, price = '', link = '' }) {
+    if (!description) return { error: 'description required' };
+    addDoc(collection(db, "shopping"), { desc: description, link, price, bought: false, owner: uid, createdAt: serverTimestamp() });
+    return { ok: true, added: description };
+  },
+  mark_shopping_bought({ description }) {
+    const q = (description || '').toLowerCase();
+    const item = appData.shopping.find(i => !i.bought && i.desc.toLowerCase().includes(q))
+      || appData.shopping.find(i => !i.bought && q.includes(i.desc.toLowerCase()));
+    if (!item) return { error: `no pending item matching "${description}"` };
+    updateDoc(doc(db, "shopping", item.id), { bought: true });
+    return { ok: true, marked: item.desc };
+  },
+  list_movies({ status } = {}) {
+    return { movies: [...movieItems.values()].filter(m => !status || m.status === status)
+      .map(({ title, type, status: s, rating, genre }) => ({ title, type, status: s, rating, genre })) };
+  }
+};
+
+window.farvis = {
+  data: appData,
+  tools: farvisTools,
+  upcomingEvents,
+  daysUntil,
+  userName: () => {
+    const raw = (currentUser?.displayName || currentUser?.email || '').split('@')[0].replace(/[._\d]+/g, ' ').trim();
+    return raw ? raw.split(' ')[0].replace(/^./, c => c.toUpperCase()) : '';
+  }
+};
 
 // ==========================================
 // --- GLOBAL CORE RUNTIME ROUTING ---

@@ -68,7 +68,8 @@
         <p class="brand-sub">Personal command center</p>
       </div>
       <ul class="nav-links">
-        <li class="active" onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
+        <li class="active" onclick="switchTab('home',this)"><i class="fa-solid fa-house"></i> Home</li>
+        <li onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
         <li onclick="switchTab('academic',this)"><i class="fa-solid fa-graduation-cap"></i> Academic Planner</li>
         <li onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
         <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> Media Tracker</li>
@@ -101,7 +102,51 @@
         <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode"><i class="fa-solid fa-moon"></i></button>
       </div>
 
-      <section id="vault" class="tab-content active-tab fade-in">
+      <section id="home" class="tab-content active-tab fade-in">
+        <div class="home-hero">
+          <div>
+            <p class="home-date" id="home-date"></p>
+            <h1 class="home-greeting" id="home-greeting">Hello</h1>
+            <p class="home-summary" id="home-summary"></p>
+          </div>
+          <div class="home-status" id="home-pc-status"></div>
+        </div>
+        <form class="ask-bar" onsubmit="event.preventDefault(); farvisSend('home-ask')">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <input id="home-ask" autocomplete="off" placeholder="Ask Farvis anything... (Ctrl+K)">
+          <button type="button" class="mic-btn" onclick="farvisVoice()" aria-label="Speak"><i class="fa-solid fa-microphone"></i></button>
+          <button type="submit" aria-label="Send"><i class="fa-solid fa-arrow-up"></i></button>
+        </form>
+        <div class="suggestions" id="home-suggestions"></div>
+        <div class="home-grid">
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-calendar-day"></i> Upcoming</h3>
+            <div id="home-deadlines"></div>
+          </div>
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-cart-shopping"></i> To buy</h3>
+            <div id="home-shopping"></div>
+          </div>
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-film"></i> Up next to watch</h3>
+            <div id="home-watch"></div>
+          </div>
+          <div class="pc-card">
+            <h3><i class="fa-solid fa-desktop"></i> Quick controls</h3>
+            <div class="pc-row">
+              <button onclick="pcMedia('prev')" aria-label="Previous"><i class="fa-solid fa-backward-step"></i></button>
+              <button onclick="pcMedia('play_pause')" aria-label="Play/pause"><i class="fa-solid fa-play"></i></button>
+              <button onclick="pcMedia('next')" aria-label="Next"><i class="fa-solid fa-forward-step"></i></button>
+              <button onclick="pcMedia('volume_down')" aria-label="Volume down"><i class="fa-solid fa-volume-low"></i></button>
+              <button onclick="pcMedia('volume_up')" aria-label="Volume up"><i class="fa-solid fa-volume-high"></i></button>
+              <button onclick="pcPower('lock')" aria-label="Lock PC"><i class="fa-solid fa-lock"></i></button>
+            </div>
+            <p class="pc-muted">Media keys and lock on your PC.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="vault" class="tab-content fade-in">
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Secure Vault</h1>
           <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
@@ -428,10 +473,29 @@
     <button onclick="pcStopVideo()" aria-label="Stop"><i class="fa-solid fa-stop"></i></button>
   </div>
 
+  <button id="farvis-fab" class="farvis-fab" onclick="farvisToggle()" title="Ask Farvis (Ctrl+K)" aria-label="Open Farvis assistant">
+    <img src="favicon.png" alt="">
+  </button>
+  <aside id="farvis-drawer" class="farvis-drawer" aria-label="Farvis assistant">
+    <div class="drawer-head">
+      <img src="favicon.png" alt=""><b>Farvis</b>
+      <span class="pc-muted">Ctrl+K</span>
+      <button onclick="farvisNewChat()" title="New chat" aria-label="New chat"><i class="fa-solid fa-rotate-left"></i></button>
+      <button onclick="farvisClose()" title="Close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div id="chat-log" class="chat-log"></div>
+    <form class="chat-input" onsubmit="event.preventDefault(); farvisSend('chat-input')">
+      <button type="button" class="mic-btn" onclick="farvisVoice()" aria-label="Speak"><i class="fa-solid fa-microphone"></i></button>
+      <input id="chat-input" autocomplete="off" placeholder="Ask Farvis...">
+      <button type="submit" aria-label="Send"><i class="fa-solid fa-arrow-up"></i></button>
+    </form>
+  </aside>
+
   <div id="toast" class="toast">Action successful!</div>
 
   <script type="module" src="script.js"></script>
   <script type="module" src="pc.js"></script>
+  <script type="module" src="farvis.js"></script>
   <script>
     if('serviceWorker' in navigator){
       window.addEventListener('load',()=>{

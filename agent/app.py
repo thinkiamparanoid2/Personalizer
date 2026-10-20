@@ -193,6 +193,34 @@ async def run_voice(audio: UploadFile = File(...)):
     return await cmdbar.dispatch(cmd, False, heard)
 
 
+# ---------- Farvis chat assistant ----------
+class AssistantBody(BaseModel):
+    session: str
+    message: str | None = None
+    tool_results: list[dict] | None = None
+    context: dict | None = None
+
+
+@api.post("/assistant")
+def assistant_step(body: AssistantBody):
+    from . import assistant
+    return assistant.step(body.session, body.message, body.tool_results, body.context)
+
+
+@api.post("/assistant/reset")
+def assistant_reset(body: AssistantBody):
+    from . import assistant
+    assistant.reset(body.session)
+    return {"reset": True}
+
+
+@api.post("/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """Speech -> text only (the chat assistant decides what to do with it)."""
+    suffix = Path(audio.filename or "voice.webm").suffix or ".webm"
+    return {"text": await run_in_threadpool(cmdbar.transcribe_bytes, await audio.read(), suffix)}
+
+
 # ---------- 3.x files, AirDrop, clipboard, share ----------
 @api.get("/fs/list")
 def fs_list(path: str | None = None):

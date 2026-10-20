@@ -90,7 +90,7 @@ def unique_path(path):
 _gemini_bad_until = {}  # model -> time until which it is tried last
 
 
-def gemini_generate(contents, config=None, fast=False):
+def gemini_generate(contents, config=None, fast=False, timeout_s=None):
     """generate_content on the configured model, falling back to gemini_fallback_models when one is
     overloaded/unavailable. fast=True: ~10 s per model, no retry backoff (interactive voice commands)."""
     from google import genai
@@ -99,8 +99,8 @@ def gemini_generate(contents, config=None, fast=False):
     cfg = cfgmod.load()
     if not cfg["gemini_api_key"]:
         raise RuntimeError("Set gemini_api_key in agent/config.json")
-    opts = types.HttpOptions(timeout=10000 if fast else 120000,  # Gemini minimum deadline is 10 s
-                             retry_options=types.HttpRetryOptions(attempts=1 if fast else 2))
+    timeout_ms = int((timeout_s or (10 if fast else 120)) * 1000)  # Gemini minimum deadline is 10 s
+    opts = types.HttpOptions(timeout=timeout_ms, retry_options=types.HttpRetryOptions(attempts=1 if fast else 2))
     client = genai.Client(api_key=cfg["gemini_api_key"], http_options=opts)
     models = list(dict.fromkeys([cfg["gemini_model"], *cfg.get("gemini_fallback_models", [])]))
     now = time.time()

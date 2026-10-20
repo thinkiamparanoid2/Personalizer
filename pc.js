@@ -425,3 +425,6 @@ Object.defineProperties(window, {
   fileParent: { get: () => fileParent },
   jobList: { get: () => jobList }
 });
+
+// Shared with farvis.js (the assistant talks to the same agent).
+export { api, agent };

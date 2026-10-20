@@ -8,6 +8,7 @@ const APP_SHELL = [
   './firebase.js',
   './vault-crypto.js',
   './pc.js',
+  './farvis.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
