@@ -96,11 +96,13 @@
         </span>
       </div>
       <div class="top-bar">
+        <div class="mobile-brand"><img src="favicon.png" alt=""><span>FARVIS</span></div>
         <div class="search-container">
           <i class="fa-solid fa-search"></i>
           <input type="text" id="global-search" onkeyup="filterItems()" placeholder="Search active tab...">
         </div>
         <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode"><i class="fa-solid fa-moon"></i></button>
+        <button class="theme-toggle mobile-only" onclick="handleLogout()" aria-label="Log out"><i class="fa-solid fa-right-from-bracket"></i></button>
       </div>
 
       <section id="home" class="tab-content active-tab fade-in">

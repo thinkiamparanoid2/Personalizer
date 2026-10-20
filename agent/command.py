@@ -18,7 +18,7 @@ MEDIA = Literal["volume_up", "volume_down", "mute", "play_pause", "next", "prev"
 
 
 class Command(BaseModel):
-    action: Literal["media", "play_yt", "power", "audio_device", "ytdl", "none"]
+    action: Literal["media", "play_yt", "open_app", "power", "audio_device", "ytdl", "none"]
     media: Optional[MEDIA] = None
     query: Optional[str] = None  # YouTube search, audio device hint, or video URL
     power: Optional[Literal["lock", "sleep", "shutdown", "cancel"]] = None
@@ -72,7 +72,11 @@ def parse_rules(text):
     if re.fullmatch(r"(what('s| is) the )?time( is it)?( now)?|what time is it( now)?", t):
         from datetime import datetime
         return Command(action="none", say=datetime.now().strftime("It's %I:%M %p.").replace(" 0", " "))
-    if m := re.fullmatch(r"(?:play|put on|open)\s+(.+?)(?:\s+(?:on|from) youtube)?", t):
+    if m := re.fullmatch(r"(?:open|launch|start|run)\s+(.+?)\s+(?:on|from) youtube", t):
+        return Command(action="play_yt", query=m.group(1))
+    if m := re.fullmatch(r"(?:open|launch|start|run|fire up)\s+(?:up\s+)?(.+)", t):
+        return Command(action="open_app", query=m.group(1))
+    if m := re.fullmatch(r"(?:play|put on)\s+(.+?)(?:\s+(?:on|from) youtube)?", t):
         return Command(action="play_yt", query=m.group(1))
     if m := re.search(r"\b(?:switch|change|swap)\b.*?\bto\s+(?:the\s+|my\s+)?(.+)", t):
         return Command(action="audio_device", query=m.group(1))
@@ -80,10 +84,11 @@ def parse_rules(text):
 
 
 PROMPT = """You turn a spoken request into one command for a Windows PC. Reply with JSON only:
-{{"action": "media|play_yt|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
+{{"action": "media|play_yt|open_app|power|audio_device|ytdl|none", "media": "volume_up|volume_down|mute|play_pause|next|prev",
 "query": "...", "power": "lock|sleep|shutdown|cancel", "delay_s": 0, "format": "mp4|mp3", "say": "..."}}
 - media: playback/volume keys.
 - play_yt: query = what to search and play on YouTube.
+- open_app: query = name of an installed PC app or game to launch (e.g. "Riot Client", "Discord").
 - audio_device: query = output device hint, e.g. "headphones" or "speakers".
 - power: delay_s = seconds from now (0 = now).
 - ytdl: query = the video URL to download; format mp3 for audio only.
@@ -178,6 +183,8 @@ def execute(cmd):
     if cmd.action == "play_yt":
         r = osctl.play_yt(cmd.query or "")
         return f"Playing {r.get('title') or r['url']}"
+    if cmd.action == "open_app":
+        return f"Opening {osctl.open_app(cmd.query or '')['opened']}"
     if cmd.action == "audio_device":
         dev = _match_device(cmd.query, osctl.audio_devices())
         osctl.set_audio_device(dev["id"])
@@ -219,6 +226,19 @@ def _self_check():
     assert r("shut down after 1 hour") == ("power", "shutdown", 3600)
     assert r("cancel the shutdown") == ("power", "cancel", 0)
     assert r("switch to headphones") == ("audio_device", "headphones", 0)
+    assert r("open riot client") == ("open_app", "riot client", 0)
+    assert r("launch valorant") == ("open_app", "valorant", 0)
+    assert r("open lofi beats on youtube") == ("play_yt", "lofi beats", 0)
+    from .osctl import match_app
+    apps = [{"Name": "Riot Client", "AppID": "riot"}, {"Name": "VALORANT", "AppID": "val"},
+            {"Name": "VLC media player", "AppID": "vlc"}, {"Name": "VLC media player skinned", "AppID": "vlc2"},
+            {"Name": "Uninstall Discord", "AppID": "x"}, {"Name": "Discord", "AppID": "dc"}]
+    assert match_app("riot client", apps)["AppID"] == "riot"
+    assert match_app("the riot app", apps)["AppID"] == "riot"
+    assert match_app("valorant", apps)["AppID"] == "val"
+    assert match_app("vlc", apps)["AppID"] == "vlc"
+    assert match_app("discord", apps)["AppID"] == "dc"
+    assert match_app("photoshop", apps) is None
     c = parse_rules("download https://www.youtube.com/watch?v=abc as mp3")
     assert (c.action, c.query, c.format) == ("ytdl", "https://www.youtube.com/watch?v=abc", "mp3")
     assert parse_rules("what's the weather tomorrow") is None

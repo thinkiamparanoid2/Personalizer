@@ -37,6 +37,59 @@ def play_yt(query):
     return {"title": entries[0].get("title"), "url": url}
 
 
+# --- Open installed apps by name (Start menu entries: desktop and Store apps) ---
+_apps_cache = {"t": 0, "apps": []}
+
+
+def installed_apps():
+    import json
+    import time
+    if time.time() - _apps_cache["t"] > 600:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             creationflags=NO_WINDOW, timeout=30)
+        apps = json.loads(out.stdout or "[]")
+        _apps_cache.update(t=time.time(), apps=apps if isinstance(apps, list) else [apps])
+    return _apps_cache["apps"]
+
+
+def match_app(name, apps):
+    """Best Start-menu entry for a spoken name; None if nothing is close enough."""
+    import difflib
+    import re
+    norm = lambda s: re.sub(r"[^a-z0-9 ]", " ", s.lower()).split()  # noqa: E731
+    q = [w for w in norm(name) if w not in {"the", "app", "application", "program", "my", "please"}]
+    if not q:
+        return None
+    qs = " ".join(q)
+    best, best_score = None, 0.0
+    for app in apps:
+        n = " ".join(norm(app.get("Name", "")))
+        if not n or "uninstall" in n:
+            continue
+        if n == qs:
+            score = 3.0
+        elif n.startswith(qs) or all(w in n.split() for w in q):
+            score = 2.0 - len(n) / 1000  # prefer the shortest name ("VLC media player" over its variants)
+        else:
+            score = difflib.SequenceMatcher(None, qs, n).ratio()
+        if score > best_score:
+            best, best_score = app, score
+    return best if best_score >= 0.75 else None
+
+
+def open_app(name):
+    app = match_app(name, installed_apps())
+    if not app:
+        if "." in name and " " not in name.strip():  # looks like a website
+            url = name if name.startswith("http") else f"https://{name}"
+            open_url(url)
+            return {"opened": url}
+        raise ValueError(f"No installed app called '{name}'")
+    subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app['AppID']}"])
+    return {"opened": app["Name"]}
+
+
 # --- Default audio endpoint: undocumented-but-stable IPolicyConfig (what the Sound panel uses). ---
 class IPolicyConfig(IUnknown):
     _iid_ = GUID("{f8679f50-850a-41cf-9c72-430f290290c8}")

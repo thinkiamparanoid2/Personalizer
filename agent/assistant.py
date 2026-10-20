@@ -29,6 +29,9 @@ SERVER_TOOLS = [
         ["action"]),
     _fn("play_youtube", "Search YouTube and play the top result in the PC browser.",
         {"query": {"type": "string", "description": "Song, video or channel to search for"}}, ["query"]),
+    _fn("open_app", "Launch an installed PC app or game by name (e.g. 'Riot Client', 'Discord', 'Steam'), "
+                    "or open a website. Use this for 'open X' requests, not YouTube.",
+        {"name": {"type": "string"}}, ["name"]),
     _fn("set_audio_output", "Switch the PC's default audio output device.",
         {"device_hint": {"type": "string", "description": "e.g. 'headphones', 'speakers', 'TV'"}}, ["device_hint"]),
     _fn("download_video", "Download a YouTube/online video to the PC as MP4, or audio-only MP3.",
@@ -95,6 +98,8 @@ def _run_server_tool(name, args):
             dev = command._match_device(args.get("device_hint"), osctl.audio_devices())
             osctl.set_audio_device(dev["id"])
             return {"switched_to": dev["name"]}
+        if name == "open_app":
+            return osctl.open_app(args["name"])
         if name == "play_youtube":
             return osctl.play_yt(args["query"])
         if name == "download_video":
