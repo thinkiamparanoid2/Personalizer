@@ -16,7 +16,8 @@ def _tailscale_names():
     try:
         out = subprocess.run([exe, "status", "--json"], capture_output=True, timeout=5, check=True)
         me = json.loads(out.stdout)["Self"]
-        return [*me.get("TailscaleIPs", []), me.get("DNSName", "").rstrip(".")]
+        # Fields are null while Tailscale is logged out / still starting after boot.
+        return [*(me.get("TailscaleIPs") or []), (me.get("DNSName") or "").rstrip(".")]
     except (OSError, subprocess.SubprocessError, ValueError, KeyError):
         return []
 
