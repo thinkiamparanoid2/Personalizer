@@ -87,33 +87,59 @@ def unique_path(path):
     return candidate
 
 
-_gemini_bad_until = {}  # model -> time until which it is tried last
+_gemini_bad = {}      # model -> earliest time to re-test it; a failed model is tried last until a test passes
+_gemini_probing = set()
+FAST_TRY_S = 12       # interactive calls: cap on each model except the last (a busy model can hang to the deadline)
+
+
+def _bad_for(err):
+    """Seconds before re-testing a failed model: quota resets daily, a retired model won't come back soon."""
+    e = f" {err}"
+    return 3600 if "RESOURCE_EXHAUSTED" in e or " 429" in e else 86400 if "NOT_FOUND" in e or " 404" in e else 1800
+
+
+def _probe(client, model):
+    """Background re-test of a failed model with a tiny request, so no user waits on it."""
+    try:
+        client.models.generate_content(model=model, contents="Reply with: ok")
+        _gemini_bad.pop(model, None)
+        print(f"Gemini {model} is answering again")
+    except Exception as e:
+        _gemini_bad[model] = time.time() + _bad_for(e)
+    finally:
+        _gemini_probing.discard(model)
 
 
 def gemini_generate(contents, config=None, fast=False, timeout_s=None):
     """generate_content on the configured model, falling back to gemini_fallback_models when one is
-    overloaded/unavailable. fast=True: ~10 s per model, no retry backoff (interactive voice commands)."""
+    overloaded/unavailable. fast=True: no retry backoff, and models other than the last get FAST_TRY_S."""
+    import threading
     from google import genai
     from google.genai import types
     from . import config as cfgmod
     cfg = cfgmod.load()
     if not cfg["gemini_api_key"]:
         raise RuntimeError("Set gemini_api_key in agent/config.json")
-    timeout_ms = int((timeout_s or (10 if fast else 120)) * 1000)  # Gemini minimum deadline is 10 s
-    opts = types.HttpOptions(timeout=timeout_ms, retry_options=types.HttpRetryOptions(attempts=1 if fast else 2))
-    client = genai.Client(api_key=cfg["gemini_api_key"], http_options=opts)
+    timeout_s = timeout_s or (10 if fast else 120)  # Gemini minimum deadline is 10 s
+    attempts = types.HttpRetryOptions(attempts=1 if fast else 2)
+    client_for = lambda s: genai.Client(api_key=cfg["gemini_api_key"],  # noqa: E731
+                                        http_options=types.HttpOptions(timeout=int(s * 1000), retry_options=attempts))
     models = list(dict.fromkeys([cfg["gemini_model"], *cfg.get("gemini_fallback_models", [])]))
     now = time.time()
-    # Models that failed recently go last, so the next call doesn't wait on a busy model first.
-    models.sort(key=lambda m: _gemini_bad_until.get(m, 0) > now)
+    for m, retest_at in list(_gemini_bad.items()):
+        if retest_at <= now and m in models and m not in _gemini_probing:
+            _gemini_probing.add(m)
+            threading.Thread(target=_probe, args=(client_for(10), m), daemon=True).start()
+    models.sort(key=lambda m: m in _gemini_bad)  # failed models last, configured order otherwise
     last = None
-    for model in models:
+    for i, model in enumerate(models):
+        is_last = i == len(models) - 1
+        client = client_for(min(timeout_s, FAST_TRY_S) if fast and not is_last else timeout_s)
         try:
             return client.models.generate_content(model=model, contents=contents, config=config)
         except Exception as e:  # 503 overloaded, 504 timeout, 404 retired model...
             print(f"Gemini {model} failed: {str(e)[:120]}")
-            quota = "RESOURCE_EXHAUSTED" in str(e) or " 429" in f" {e}"
-            _gemini_bad_until[model] = time.time() + (3600 if quota else 300)  # quotas reset daily
+            _gemini_bad[model] = time.time() + _bad_for(e)
             last = e
     if last is not None and ("RESOURCE_EXHAUSTED" in str(last) or "429" in str(last)):
         raise RuntimeError("Gemini quota used up: the free daily limit for these models is reached "
@@ -170,3 +196,60 @@ def set_clipboard_image(img):
         win32clipboard.SetClipboardData(win32clipboard.CF_DIB, buf.getvalue()[14:])
     finally:
         win32clipboard.CloseClipboard()
+
+
+def _gemini_self_check():
+    """Fallback order, timeout caps and background re-tests, with a fake Gemini client."""
+    from google import genai
+    from . import config as cfgmod
+    calls, busy = [], {"primary"}
+
+    class FakeClient:
+        def __init__(self, api_key, http_options):
+            self.timeout_s = http_options.timeout / 1000
+            self.models = self
+
+        def generate_content(self, model, contents, config=None):
+            calls.append((model, self.timeout_s, contents == "Reply with: ok"))
+            if model in busy:
+                raise RuntimeError("503 UNAVAILABLE")
+            return model
+
+    real_client, real_load = genai.Client, cfgmod.load
+    genai.Client = FakeClient
+    cfgmod.load = lambda: {"gemini_api_key": "k", "gemini_model": "primary", "gemini_fallback_models": ["second", "third"]}
+    _gemini_bad.clear()
+    try:
+        assert gemini_generate("hi", fast=True, timeout_s=30) == "second"
+        assert calls == [("primary", 12, False), ("second", 12, False)], calls   # non-last models capped
+        calls.clear()
+        assert gemini_generate("hi", fast=True, timeout_s=30) == "second" and calls[0][0] == "second"  # busy one waits
+        _gemini_bad["primary"] = 0                     # re-test due: probed in the background, user not blocked
+        calls.clear()
+        assert gemini_generate("hi", fast=True, timeout_s=30) == "second"
+        time.sleep(0.2)
+        assert ("primary", 10, True) in calls and "primary" in _gemini_bad and _gemini_bad["primary"] > time.time()
+        busy.clear()
+        _gemini_bad["primary"] = 0
+        gemini_generate("hi", fast=True, timeout_s=30)
+        time.sleep(0.2)
+        assert "primary" not in _gemini_bad            # answered the probe: back in first place
+        calls.clear()
+        assert gemini_generate("hi", fast=True, timeout_s=30) == "primary" and calls == [("primary", 12, False)]
+        busy.update({"primary", "second", "third"})
+        calls.clear()
+        try:
+            gemini_generate("hi", fast=True, timeout_s=30)
+            raise AssertionError("expected failure")
+        except RuntimeError as e:
+            assert "All Gemini models failed" in str(e)
+        assert calls[-1] == ("third", 30, False), calls   # the last model gets the full deadline
+        assert _bad_for("429 RESOURCE_EXHAUSTED") == 3600 and _bad_for("404 NOT_FOUND") == 86400 and _bad_for("503") == 1800
+        print("gemini fallback self-check OK")
+    finally:
+        genai.Client, cfgmod.load = real_client, real_load
+        _gemini_bad.clear()
+
+
+if __name__ == "__main__":
+    _gemini_self_check()
