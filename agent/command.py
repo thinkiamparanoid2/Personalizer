@@ -260,6 +260,16 @@ def _self_check():
     assert match_app("vlc", apps)["AppID"] == "vlc"
     assert match_app("discord", apps)["AppID"] == "dc"
     assert match_app("photoshop", apps) is None
+    office = [{"Name": "Word", "AppID": "word"}, {"Name": "WordPad", "AppID": "pad"},
+              {"Name": "Microsoft Store", "AppID": "store"}, {"Name": "Microsoft Edge", "AppID": "edge"},
+              {"Name": "Steam", "AppID": "steam"}]
+    for spoken in ("microsoft word", "microsoft word document", "ms word", "word document", "word"):
+        assert match_app(spoken, office)["AppID"] == "word", spoken   # Office names it just "Word"
+    assert match_app("microsoft store", office)["AppID"] == "store"
+    assert match_app("store", office)["AppID"] == "store"
+    assert match_app("edge", office)["AppID"] == "edge"
+    assert match_app("microsoft teams", office) is None              # not "Microsoft Store", "Edge" or "Steam"
+    assert match_app("valorent", apps)["AppID"] == "val"             # misheard names still match
     assert r("close riot client") == ("close_app", "riot client", 0)
     assert r("quit discord") == ("close_app", "discord", 0)
     assert r("uninstall valorant from my computer") == ("uninstall_app", "valorant", 0)

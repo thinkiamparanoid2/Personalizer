@@ -53,6 +53,9 @@ def installed_apps():
     return _apps_cache["apps"]
 
 
+VENDORS = {"microsoft", "ms", "google", "adobe"}  # shared prefixes that say nothing about which app
+
+
 def match_app(name, apps):
     """Best Start-menu entry for a spoken name; None if nothing is close enough."""
     import difflib
@@ -62,17 +65,26 @@ def match_app(name, apps):
     if not q:
         return None
     qs = " ".join(q)
+    q_core = " ".join(w for w in q if w not in VENDORS)
     best, best_score = None, 0.0
     for app in apps:
-        n = " ".join(norm(app.get("Name", "")))
+        words = norm(app.get("Name", ""))
+        n = " ".join(words)
         if not n or "uninstall" in n:
             continue
+        core = " ".join(w for w in words if w not in VENDORS)
         if n == qs:
             score = 3.0
-        elif n.startswith(qs) or all(w in n.split() for w in q):
+        elif n.startswith(qs) or all(w in words for w in q):
             score = 2.0 - len(n) / 1000  # prefer the shortest name ("VLC media player" over its variants)
+        elif core and all(w in q for w in words):
+            # The app's whole name is in the request: "Word" for "microsoft word document"
+            score = 1.5 + len(words) / 100
         else:
-            score = difflib.SequenceMatcher(None, qs, n).ratio()
+            # Fuzzy, for misheard names ("valorent"), without vendor words so "microsoft word" isn't
+            # "Microsoft Store"; same first letter so anagram-ish names ("teams"/"steam") don't match.
+            score = (difflib.SequenceMatcher(None, q_core, core).ratio()
+                     if q_core and core and q_core[0] == core[0] else 0.0)
         if score > best_score:
             best, best_score = app, score
     return best if best_score >= 0.75 else None
