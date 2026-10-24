@@ -218,7 +218,10 @@ function chip(tool, result) {
     set_reminder: result.reminder && `Reminder: ${result.reminder.text} · ${new Date(result.reminder.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
     cancel_reminder: result.cancelled && 'Reminder cancelled',
     remember: result.remembered && !result.already_known && `Remembered: ${result.remembered.text}`,
-    forget: result.forgot && `Forgot: ${result.forgot}`
+    forget: result.forgot && `Forgot: ${result.forgot}`,
+    add_routine: result.routine && `Routine: ${result.routine.name} · ${result.routine.at}${
+      result.routine.days.length < 7 ? ` ${result.routine.days.join(', ')}` : ' daily'}`,
+    cancel_routine: result.cancelled && 'Routine cancelled'
   }[tool];
   return text ? `<span class="action-chip"><i class="fa-solid fa-check"></i> ${esc(text)}</span>` : '';
 }

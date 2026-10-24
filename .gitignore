@@ -151,3 +151,4 @@ agent/agent.log
 agent/last_voice.*
 agent/reminders.json
 agent/memory.json
+agent/routines.json

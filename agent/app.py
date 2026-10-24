@@ -55,12 +55,12 @@ def _resolve_file(path):
 @asynccontextmanager
 async def lifespan(_app):
     # Background helpers; a failure in one must not stop the API.
-    from . import snip, watcher
+    from . import routines, snip, watcher
     import threading
     warm = lambda: threading.Thread(target=cmdbar.warm_up, daemon=True).start()  # noqa: E731
     for name, start in (("downloads watcher", watcher.start if cfg["watch_downloads"] else None),
                         ("snip hotkey", snip.start), ("yt-dlp update", tools.maybe_update_ytdlp),
-                        ("voice model warm-up", warm), ("reminders", reminders.start)):
+                        ("voice model warm-up", warm), ("reminders", reminders.start), ("routines", routines.start)):
         if start:
             try:
                 start()

@@ -64,6 +64,25 @@ SERVER_TOOLS = [
         {"id": {"type": "string"}}, ["id"]),
 ]
 
+# Scheduling routines from chat (not offered to a routine itself, so routines can't spawn routines).
+ROUTINE_TOOLS = [
+    _fn("add_routine", "Schedule a recurring task you will do by yourself and send to the user as a notification, "
+                       "e.g. 'every Sunday 8pm plan my week', 'weekdays 7am brief me and suggest what to study'.",
+        {"name": {"type": "string", "description": "Short title for the notification, 2-4 words, e.g. 'Weekly plan'"},
+         "prompt": {"type": "string", "description": "What to do each time, written as an instruction to yourself"},
+         "at": {"type": "string", "description": "Local time HH:MM (24h)"},
+         "days": {"type": "array", "items": {"type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+                  "description": "Days to run; omit for every day"}},
+        ["name", "prompt", "at"]),
+    _fn("list_routines", "List scheduled routines."),
+    _fn("cancel_routine", "Cancel a routine by its id (get ids from list_routines).",
+        {"id": {"type": "string"}}, ["id"]),
+]
+
+# Routines run with no browser open, so the planner comes from the copy the web app last synced.
+PLANNER_TOOL = _fn("planner_snapshot", "Upcoming quizzes, assignments and lab tests (next 30 days) "
+                                       "and how many shopping items are pending.")
+
 CLIENT_TOOLS = [
     _fn("list_academic_events", "List the user's upcoming quizzes, assignments and lab tests.",
         {"days_ahead": {"type": "integer", "description": "How many days ahead to include (default 30)"}}),
@@ -110,8 +129,20 @@ What you remember about {name}:
 
 
 def _run_server_tool(name, args):
-    from . import command, jobs, media, notes, osctl, reminders, tools
+    from . import command, jobs, media, notes, osctl, reminders, routines, tools
     try:
+        if name == "add_routine":
+            return {"ok": True, "routine": routines.add(args["prompt"], args["at"], args.get("days"), args.get("name"))}
+        if name == "list_routines":
+            return {"routines": routines.list_all()}
+        if name == "cancel_routine":
+            return routines.cancel(args["id"])
+        if name == "planner_snapshot":
+            from datetime import date
+            state = reminders._load()
+            return {"today": date.today().isoformat(),
+                    "events": [{**e, "days_left": d} for d, e in reminders._events(state, date.today()) if d <= 30],
+                    "shopping_pending": state.get("data", {}).get("shopping_pending", 0)}
         if name == "remember":
             return memory.remember(args["fact"])
         if name == "forget":
@@ -184,15 +215,37 @@ def _trim(contents):
     return contents[-MAX_TURNS:]
 
 
-def step(sid, message=None, tool_results=None, context=None):
+ROUTINE_NOTE = """
+
+This is a scheduled routine: the user is not in a chat and will read your answer as a phone/PC
+notification. Do the task with your tools (planner_snapshot for deadlines), then reply with the result
+only, in at most 5 short lines of plain text (no Markdown, no emoji). Don't ask questions."""
+
+
+def run_routine(prompt):
+    """One routine run with no browser: server tools only, fresh throwaway session."""
+    from . import reminders
+    sid = "routine-" + uuid.uuid4().hex
+    try:
+        name = reminders._load().get("data", {}).get("name") or ""
+        now = time.strftime("%A %d %B %Y %H:%M, date %Y-%m-%d")
+        r = step(sid, prompt, context={"name": name, "now": now}, routine=True)
+        return r.get("reply") or "Done."
+    finally:
+        reset(sid)
+
+
+def step(sid, message=None, tool_results=None, context=None, routine=False):
     """Advance the conversation. Returns {"reply", "actions"} when done, or {"calls": [...]} when the
     browser must run app tools first (then call again with tool_results)."""
     s = _session(sid or uuid.uuid4().hex)
     ctx = context or {}
+    system = SYSTEM.format(name=ctx.get("name") or "the user", now=ctx.get("now") or time.ctime(),
+                           tz=ctx.get("tz") or "local", memory=memory.prompt_block())
+    tools = SERVER_TOOLS + [PLANNER_TOOL] if routine else SERVER_TOOLS + ROUTINE_TOOLS + CLIENT_TOOLS
     config = types.GenerateContentConfig(
-        system_instruction=SYSTEM.format(name=ctx.get("name") or "the user", now=ctx.get("now") or time.ctime(),
-                                         tz=ctx.get("tz") or "local", memory=memory.prompt_block()),
-        tools=[types.Tool(function_declarations=SERVER_TOOLS + CLIENT_TOOLS)],
+        system_instruction=system + (ROUTINE_NOTE if routine else ""),
+        tools=[types.Tool(function_declarations=tools)],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         thinking_config=types.ThinkingConfig(thinking_level="LOW"))  # snappier replies for chat
 
