@@ -345,6 +345,7 @@ const pcReveal = ui(async path => {
 });
 async function renderJobs() {
   const list = await api('/api/jobs');
+  window.dispatchEvent(new CustomEvent('pc-jobs', { detail: list }));  // Home's Now card
   jobList = list.slice(0, 8);
   $('pc-jobs').innerHTML = jobList.map((j, i) => `
     <div class="pc-item"><i class="fa-solid ${j.status === 'done' ? 'fa-check' : j.status === 'error' ? 'fa-triangle-exclamation' : 'fa-spinner fa-spin'}"></i>

@@ -68,14 +68,15 @@
         <p class="brand-sub">Personal command center</p>
       </div>
       <ul class="nav-links">
+        <!-- Phone bottom bar shows 5 groups; .nav-sub tabs are reached from the sub-tabs inside their group. -->
         <li class="active" onclick="switchTab('home',this)"><i class="fa-solid fa-house"></i> Home</li>
-        <li onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> Secure Vault</li>
-        <li onclick="switchTab('academic',this)"><i class="fa-solid fa-graduation-cap"></i> Academic Planner</li>
-        <li onclick="switchTab('notes',this);notesInit()"><i class="fa-solid fa-book-open"></i> Study Notes</li>
-        <li onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
-        <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> Media Tracker</li>
-        <li onclick="switchTab('shopping',this)"><i class="fa-solid fa-cart-shopping"></i> Shopping List</li>
-        <li onclick="switchTab('pc',this);pcInit()"><i class="fa-solid fa-desktop"></i> PC Control</li>
+        <li onclick="switchTab('academic',this)"><i class="fa-solid fa-graduation-cap"></i> <span class="nav-full">Academic Planner</span><span class="nav-short">Study</span></li>
+        <li class="nav-sub" onclick="switchTab('notes',this);notesInit()"><i class="fa-solid fa-book-open"></i> Study Notes</li>
+        <li onclick="switchTab('vault',this)"><i class="fa-solid fa-vault"></i> <span class="nav-full">Secure Vault</span><span class="nav-short">Vault</span></li>
+        <li class="nav-sub" onclick="switchTab('credentials',this)"><i class="fa-solid fa-key"></i> Credentials</li>
+        <li onclick="switchTab('movies',this)"><i class="fa-solid fa-film"></i> <span class="nav-full">Media Tracker</span><span class="nav-short">Lists</span></li>
+        <li class="nav-sub" onclick="switchTab('shopping',this)"><i class="fa-solid fa-cart-shopping"></i> Shopping List</li>
+        <li onclick="switchTab('pc',this);pcInit()"><i class="fa-solid fa-desktop"></i> <span class="nav-full">PC Control</span><span class="nav-short">PC</span></li>
       </ul>
       <div class="github-link" style="margin-top:auto;">
         <button class="add-btn install-app-btn" style="width:100%;justify-content:center;background:#27ae60;margin-bottom:8px;" onclick="installApp()">
@@ -115,6 +116,7 @@
           </div>
           <div class="home-status" id="home-pc-status"></div>
         </div>
+        <button type="button" class="now-card" id="home-now" hidden></button>
         <form class="ask-bar" onsubmit="event.preventDefault(); farvisSend('home-ask')">
           <i class="fa-solid fa-wand-magic-sparkles"></i>
           <input id="home-ask" autocomplete="off" placeholder="Ask Farvis anything... (Ctrl+K)">
@@ -123,24 +125,27 @@
         </form>
         <div class="suggestions" id="home-suggestions"></div>
         <div class="home-grid">
-          <div class="pc-card">
-            <h3><i class="fa-solid fa-calendar-day"></i> Upcoming</h3>
+          <!-- Cards with nothing to show are hidden (farvis.js renderHome), so a quiet day looks quiet. -->
+          <div class="pc-card" id="card-deadlines" hidden>
+            <h3><i class="fa-solid fa-calendar-day"></i> Upcoming
+              <button class="text-btn" onclick="openTab('academic')">See all</button></h3>
             <div id="home-deadlines"></div>
           </div>
-          <div class="pc-card">
-            <h3><i class="fa-solid fa-cart-shopping"></i> To buy</h3>
+          <div class="pc-card" id="card-shopping" hidden>
+            <h3><i class="fa-solid fa-cart-shopping"></i> To buy
+              <button class="text-btn" onclick="openTab('shopping')">See all</button></h3>
             <div id="home-shopping"></div>
           </div>
-          <div class="pc-card">
+          <div class="pc-card" id="card-reminders" hidden>
             <h3><i class="fa-solid fa-bell"></i> Reminders
               <button class="text-btn" onclick="farvisBrief()" title="Send today's briefing now"><i class="fa-solid fa-sun"></i> Brief me</button></h3>
             <div id="home-reminders"></div>
           </div>
-          <div class="pc-card">
+          <div class="pc-card" id="card-watch" hidden>
             <h3><i class="fa-solid fa-film"></i> Up next to watch</h3>
             <div id="home-watch"></div>
           </div>
-          <div class="pc-card">
+          <div class="pc-card" id="card-controls" hidden>
             <h3><i class="fa-solid fa-desktop"></i> Quick controls</h3>
             <div class="pc-row">
               <button onclick="pcMedia('prev')" aria-label="Previous"><i class="fa-solid fa-backward-step"></i></button>
@@ -156,6 +161,7 @@
       </section>
 
       <section id="vault" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab active" onclick="openTab('vault')">Vault</button><button class="m-tab" onclick="openTab('credentials')">Passwords</button></div>
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Secure Vault</h1>
           <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
@@ -185,6 +191,7 @@
       </section>
 
       <section id="academic" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab active" onclick="openTab('academic')">Planner</button><button class="m-tab" onclick="openTab('notes')">Notes</button></div>
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Academic Planner</h1>
           <button class="add-btn" onclick="toggleModal('add-academic-modal',true)"><i class="fa-solid fa-plus"></i> Add Event</button>
@@ -199,6 +206,7 @@
       </section>
 
       <section id="notes" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab" onclick="openTab('academic')">Planner</button><button class="m-tab active" onclick="openTab('notes')">Notes</button></div>
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Study Notes</h1>
           <form class="notes-gen" onsubmit="event.preventDefault(); notesGenerate()">
@@ -218,6 +226,7 @@
       </section>
 
       <section id="credentials" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab" onclick="openTab('vault')">Vault</button><button class="m-tab active" onclick="openTab('credentials')">Passwords</button></div>
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Platform Credentials</h1>
           <button class="add-btn" onclick="toggleModal('add-cred-modal',true)"><i class="fa-solid fa-plus"></i> Add New</button>
@@ -226,6 +235,7 @@
       </section>
 
       <section id="movies" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab active" onclick="openTab('movies')">Watchlist</button><button class="m-tab" onclick="openTab('shopping')">Shopping</button></div>
         <div class="movie-top-controls">
           <div class="movie-tabs" id="movie-status-tabs">
             <button class="m-tab active" onclick="switchMovieTab('watched',this)">Watched</button>
@@ -247,6 +257,7 @@
       </section>
 
       <section id="shopping" class="tab-content fade-in">
+        <div class="subnav"><button class="m-tab" onclick="openTab('movies')">Watchlist</button><button class="m-tab active" onclick="openTab('shopping')">Shopping</button></div>
         <div class="section-header">
           <h1 class="section-title" style="margin-bottom:0;border:none;padding:0;">Shopping List</h1>
           <button class="add-btn" onclick="toggleModal('add-shopping-modal',true)"><i class="fa-solid fa-plus"></i> Add Item</button>

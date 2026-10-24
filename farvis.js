@@ -8,7 +8,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,
 const agentReady = () => !!(agent().url && agent().token);
 const isoToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
-const SUGGESTIONS = ["What's due this week?", 'Remind me in 20 minutes to stretch', 'Add milk to my shopping list',
+const SUGGESTIONS = ["What's due this week?", 'Brief me on today', 'Remind me in 20 minutes to stretch', 'Add milk to my shopping list',
   'Play lofi on YouTube', 'Add a CSE330 quiz next Monday', 'What should I watch next?'];
 
 // ---------- Home ----------
@@ -35,23 +35,52 @@ function renderHome() {
     ? `${thisWeek} deadline${thisWeek > 1 ? 's' : ''} this week${pending.length ? ` · ${pending.length} thing${pending.length > 1 ? 's' : ''} to buy` : ''}.`
     : `Nothing due this week${pending.length ? ` · ${pending.length} thing${pending.length > 1 ? 's' : ''} to buy` : ''}.`;
 
-  $('home-deadlines').innerHTML = events.length ? events.slice(0, 6).map(e => {
+  // Empty cards stay hidden: the summary line already says when there's nothing.
+  $('card-deadlines').hidden = !events.length;
+  $('home-deadlines').innerHTML = events.slice(0, 6).map(e => {
     const d = f.daysUntil(e.date);
     return `<div class="home-item"><span class="badge ${d <= 1 ? 'urgent' : d <= 3 ? 'soon' : ''}">${whenLabel(d)}</span>
       <span class="home-item-title">${esc(e.title)}</span><span class="pc-muted">${esc(e.type)}</span></div>`;
-  }).join('') : '<p class="pc-muted">Nothing due in the next two weeks.</p>';
+  }).join('');
 
-  $('home-shopping').innerHTML = pending.length ? pending.slice(0, 5).map(i =>
+  $('card-shopping').hidden = !pending.length;
+  $('home-shopping').innerHTML = pending.slice(0, 5).map(i =>
     `<div class="home-item"><i class="fa-regular fa-circle"></i><span class="home-item-title">${esc(i.desc)}</span>
       <span class="pc-muted">${esc(i.price || '')}</span></div>`).join('')
-    + (pending.length > 5 ? `<p class="pc-muted">+${pending.length - 5} more</p>` : '')
-    : '<p class="pc-muted">Nothing to buy.</p>';
+    + (pending.length > 5 ? `<p class="pc-muted">+${pending.length - 5} more</p>` : '');
 
   const watch = f.tools.list_movies({ status: 'plan-to-watch' }).movies;
-  $('home-watch').innerHTML = watch.length ? watch.slice(0, 4).map(m =>
+  $('card-watch').hidden = !watch.length;
+  $('home-watch').innerHTML = watch.slice(0, 4).map(m =>
     `<div class="home-item"><i class="fa-solid fa-film"></i><span class="home-item-title">${esc(m.title)}</span>
-      <span class="pc-muted">${esc(m.rating || '')}</span></div>`).join('')
-    : '<p class="pc-muted">Watchlist is empty. Add titles with the IMDb button.</p>';
+      <span class="pc-muted">${esc(m.rating || '')}</span></div>`).join('');
+  renderNow();
+}
+
+// ---------- "Now": the one thing that matters most right now (hidden when nothing does) ----------
+let homeJobs = [], homeReminders = [];
+function renderNow() {
+  const f = window.farvis, box = $('home-now');
+  if (!f || !box) return;
+  const mins = r => Math.round((new Date(r.at) - Date.now()) / 60000);
+  const reminder = homeReminders.find(r => mins(r) >= -1 && mins(r) <= 60);
+  const due = f.upcomingEvents(3)[0];
+  const job = homeJobs.find(j => j.status === 'running');
+  const now =
+    reminder ? { icon: 'fa-bell', label: mins(reminder) <= 0 ? 'Reminder now' : `Reminder in ${mins(reminder)} min`,
+                 title: reminder.text } :
+    due && f.daysUntil(due.date) === 0 ? { icon: 'fa-calendar-day', label: 'Due today', title: due.title, sub: due.type, tab: 'academic', urgent: true } :
+    job ? { icon: job.kind === 'notes' ? 'fa-wand-magic-sparkles' : 'fa-download',
+            label: job.kind === 'notes' ? 'Making study notes' : 'Downloading on your PC', title: job.progress || 'Working...', tab: 'pc' } :
+    due ? { icon: 'fa-calendar-day', label: `Due ${whenLabel(f.daysUntil(due.date)).toLowerCase()}`, title: due.title, sub: due.type, tab: 'academic' } :
+    null;
+  box.hidden = !now;
+  if (!now) return;
+  box.classList.toggle('urgent', !!now.urgent);
+  box.onclick = now.tab ? () => window.openTab(now.tab) : null;
+  box.innerHTML = `<i class="fa-solid ${now.icon}"></i>
+    <span class="now-text"><span class="now-label">${esc(now.label)}</span><span class="now-title">${esc(now.title)}</span></span>
+    ${now.sub ? `<span class="pc-muted">${esc(now.sub)}</span>` : ''}`;
 }
 
 // ---------- Reminders, brief, weather (the agent delivers them even when this app is closed) ----------
@@ -75,17 +104,21 @@ function syncPlanner() {
 async function renderReminders() {
   const box = $('home-reminders');
   if (!box) return;
-  if (!agentReady()) { box.innerHTML = '<p class="pc-muted">Connect the PC agent to get reminders.</p>'; return; }
+  const hide = () => { $('card-reminders').hidden = true; homeReminders = []; renderNow(); };
+  if (!agentReady()) return hide();  // the PC status pill already says "Not connected"
   try {
     const list = await api('/api/reminders');
-    box.innerHTML = list.length ? list.slice(0, 6).map(r => {
+    homeReminders = list;
+    $('card-reminders').hidden = !list.length;
+    renderNow();
+    box.innerHTML = list.slice(0, 6).map(r => {
       const at = new Date(r.at);
       const when = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : at.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
       return `<div class="home-item"><span class="badge">${esc(when)}</span><span class="home-item-title">${esc(r.text)}</span>
         <button class="icon-btn" onclick="farvisCancelReminder('${esc(r.id)}')" aria-label="Cancel reminder"><i class="fa-solid fa-xmark"></i></button></div>`;
-    }).join('') : '<p class="pc-muted">No reminders. Try: <i>"remind me at 6pm to call Ammu"</i>.</p>';
-  } catch { box.innerHTML = '<p class="pc-muted">PC agent offline.</p>'; }
+    }).join('');
+  } catch { hide(); }
 }
 
 async function cancelReminder(id) {
@@ -110,20 +143,30 @@ async function renderWeather() {
   } catch { /* offline */ }
 }
 
+let jobsTimer = null;
 async function refreshPcStatus() {
   const el = $('home-pc-status');
   if (!el) return;
   if (!agentReady()) {
-    el.innerHTML = '<span class="dot"></span> Not connected <a href="#" onclick="switchTab(\'pc\',document.querySelector(\'.nav-links li[onclick*=pc]\'));pcInit();return false;">Set up</a>';
+    el.innerHTML = '<span class="dot"></span> Not connected <a href="#" onclick="openTab(\'pc\');return false;">Set up</a>';
+    $('card-controls').hidden = true;
     return;
   }
+  clearTimeout(jobsTimer);
   try {
-    await api('/api/jobs');
+    homeJobs = await api('/api/jobs');
     el.innerHTML = '<span class="dot ok"></span> PC online';
+    // Follow a running download/notes job closely so the Now card's progress stays live.
+    if (homeJobs.some(j => j.status === 'running')) jobsTimer = setTimeout(refreshPcStatus, 5000);
   } catch {
+    homeJobs = [];
     el.innerHTML = '<span class="dot"></span> PC offline';
   }
+  $('card-controls').hidden = !el.querySelector('.dot.ok');
+  renderNow();
 }
+// pc.js polls jobs while one runs (PC Control downloads); keep the Now card in step with it.
+window.addEventListener('pc-jobs', e => { homeJobs = e.detail; renderNow(); });
 
 window.addEventListener('farvis-data', () => { renderHome(); syncPlanner(); });
 document.addEventListener('DOMContentLoaded', () => {
@@ -243,6 +286,7 @@ async function ask(text) {
     }
     const chips = (r.actions || []).map(a => chip(a.tool, a.result)).join('');
     if ((r.actions || []).some(a => /reminder/.test(a.tool))) renderReminders();
+    if ((r.actions || []).some(a => /download_video|make_study_notes/.test(a.tool))) refreshPcStatus();
     bubble.innerHTML = md(r.reply || 'Done.') + (chips ? `<div class="chips">${chips}</div>` : '');
   } catch (e) {
     bubble.textContent = e.offline ? "I can't reach your PC right now. It may be asleep, or the agent isn't running."

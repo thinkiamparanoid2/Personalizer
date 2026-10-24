@@ -272,13 +272,17 @@ function stopListeners() {
 // --- NAVIGATION & DYNAMIC FILTERS ---
 // ==========================================
 const navItem = tabId => document.querySelector(`.nav-links li[onclick*="'${tabId}'"]`);
+const openTab = tabId => navItem(tabId)?.click();  // also runs the tab's init (pcInit, notesInit)
+// Tabs hidden from the phone's bottom bar light up their group's button instead.
+const NAV_GROUP = { notes: 'academic', credentials: 'vault', shopping: 'movies' };
 let fromHistory = false;  // switchTab called by the back button: don't touch history again
 
 function switchTab(tabId, clickedElement) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active-tab'));
-  document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active', 'group-active'));
   document.getElementById(tabId).classList.add('active-tab');
   if (clickedElement) clickedElement.classList.add('active');
+  if (NAV_GROUP[tabId]) navItem(NAV_GROUP[tabId])?.classList.add('group-active');
   document.getElementById('global-search').value = '';
   filterItems();
   // One history entry for "away from Home", so Back returns Home before it leaves the app.
@@ -292,7 +296,7 @@ function switchTab(tabId, clickedElement) {
 function restoreLastTab() {
   let tab = null;
   try { tab = localStorage.getItem('lastTab'); } catch {}
-  if (tab && tab !== 'home') navItem(tab)?.click();  // click() also runs the tab's init (pcInit, notesInit)
+  if (tab && tab !== 'home') openTab(tab);
 }
 
 function filterItems() {
@@ -412,7 +416,7 @@ window.addEventListener('popstate', () => {
   const tab = history.state?.tab || 'home';
   if (document.querySelector('.active-tab')?.id === tab) return;
   fromHistory = true;
-  try { navItem(tab)?.click(); } finally { fromHistory = false; }
+  try { openTab(tab); } finally { fromHistory = false; }
 });
 
 document.addEventListener('keydown', e => {
@@ -1262,6 +1266,7 @@ window.handleLogin         = handleLogin;
 window.sendResetEmail      = sendResetEmail;
 window.handleLogout        = handleLogout;
 window.switchTab           = switchTab;
+window.openTab             = openTab;
 window.filterItems         = filterItems;
 window.copyText            = copyText;
 window.showToast           = showToast;

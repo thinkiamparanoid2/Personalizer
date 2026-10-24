@@ -834,3 +834,29 @@ h1, h2, h3, .section-title, .brand { font-family: 'Space Grotesk', 'Inter', sans
 .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .ghost-btn { background: none; border: 1px solid var(--input-border); color: var(--text-dark); border-radius: 12px; padding: 0.6rem 1.2rem; font-weight: 600; cursor: pointer; }
 .add-btn.danger, .add-btn.danger:hover { background: #d32f2f; color: #fff; box-shadow: none; }
+
+/* Home "Now" card: the one thing that matters right now */
+.now-card { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; font: inherit;
+  margin: 0 0 1.2rem; padding: 1rem 1.2rem; border-radius: 16px; color: var(--text-dark);
+  background: linear-gradient(120deg, var(--accent-glow), transparent 75%), var(--white);
+  border: 1px solid var(--accent-glow); box-shadow: 0 0 24px var(--accent-glow); }
+.now-card[hidden] { display: none; }
+.now-card > i { font-size: 1.4rem; color: var(--maroon); width: 28px; text-align: center; }
+.now-card.urgent { border-color: rgba(239, 68, 68, 0.5); box-shadow: 0 0 24px rgba(239, 68, 68, 0.18); }
+.now-card.urgent > i { color: #ef4444; }
+.now-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.now-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-gray); }
+.now-title { font-size: 1.05rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-grid > [hidden] { display: none; }
+
+/* Phone: 5-group bottom bar; grouped tabs switch with sub-tabs at the top of the section */
+.nav-short, .subnav { display: none; }
+@media (max-width: 850px) {
+  .nav-links li.nav-sub, .nav-full { display: none; }
+  .nav-short { display: inline; }
+  .nav-links li { flex: 1 1 0; min-width: 0; }
+  .nav-links li.group-active { background: var(--accent-glow); color: var(--text-dark); }
+  .nav-links li.group-active i { color: var(--maroon); }
+  .subnav { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .suggestion:nth-child(n+5) { display: none; }  /* 4 example prompts are enough on a phone */
+}
