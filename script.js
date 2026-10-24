@@ -1007,7 +1007,9 @@ function openRateModal(event, movieId) {
 
 async function submitRating() {
   const newRating = document.getElementById('new-rating-input').value;
-  if (!newRating || !currentRatingMovieId) return;
+  if (!currentRatingMovieId) return;
+  const n = parseFloat(newRating);
+  if (!(n >= 0 && n <= 10)) return invalid('new-rating-input', "Enter a rating from 0 to 10.");
   updateDoc(doc(db, "movies", currentRatingMovieId), { rating: parseFloat(newRating).toFixed(1) })
     .catch(writeFailed('save the rating'));
   showToast("Rating saved");

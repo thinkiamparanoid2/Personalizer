@@ -90,11 +90,30 @@ def match_app(name, apps):
     return best if best_score >= 0.75 else None
 
 
+SITES = {"youtube": "https://www.youtube.com", "gmail": "https://mail.google.com", "google": "https://www.google.com",
+         "github": "https://github.com", "chatgpt": "https://chatgpt.com", "gemini": "https://gemini.google.com",
+         "claude": "https://claude.ai", "facebook": "https://www.facebook.com", "messenger": "https://www.messenger.com",
+         "instagram": "https://www.instagram.com", "whatsapp": "https://web.whatsapp.com", "reddit": "https://www.reddit.com",
+         "netflix": "https://www.netflix.com", "google drive": "https://drive.google.com", "drive": "https://drive.google.com",
+         "google classroom": "https://classroom.google.com", "classroom": "https://classroom.google.com",
+         "linkedin": "https://www.linkedin.com", "twitter": "https://x.com", "x": "https://x.com"}
+
+
+def site_url(name):
+    """URL for 'youtube' / 'github.com' / 'https://...'; None when it doesn't look like a website."""
+    import re
+    n = re.sub(r"\s+(website|site|dot com)$", "", re.sub(r"^(the|my)\s+", "", name.strip().lower()))
+    if n in SITES:
+        return SITES[n]
+    if re.fullmatch(r"(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?", n):
+        return n if n.startswith("http") else f"https://{n}"
+    return None
+
+
 def open_app(name):
     app = match_app(name, installed_apps())
     if not app:
-        if "." in name and " " not in name.strip():  # looks like a website
-            url = name if name.startswith("http") else f"https://{name}"
+        if url := site_url(name):  # installed apps win: the Discord app over discord.com
             open_url(url)
             return {"opened": url}
         raise ValueError(f"No installed app called '{name}'")
@@ -167,11 +186,14 @@ def select_targets(name, apps, procs):
             hits = [p for p in procs if p["Path"].lower().startswith(folder + "\\")]
             if hits:
                 return app["Name"], hits
-    named = [{"Name": p.get("Description") or p["ProcessName"], "AppID": str(p["Id"])} for p in procs]
+    # Only something with a window counts as a running app here: "kill the game" must not match
+    # (and force-stop) windowless services like GameInput. Its windowless helpers still close with it.
+    label = lambda p: p.get("Description") or p["ProcessName"]  # noqa: E731
+    named = [{"Name": n, "AppID": n} for n in dict.fromkeys(label(p) for p in procs if p.get("Win"))]
     best = match_app(name, named)
     if not best:
         return None, []
-    return best["Name"], [p for p in procs if (p.get("Description") or p["ProcessName"]) == best["Name"]]
+    return best["Name"], [p for p in procs if label(p) == best["Name"]]
 
 
 def close_app(name):

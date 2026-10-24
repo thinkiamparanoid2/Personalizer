@@ -34,8 +34,15 @@ UNITS = {"h": 3600, "hr": 3600, "hour": 3600, "hours": 3600, "m": 60, "min": 60,
 
 
 def _delay(t):
-    m = re.search(r"\b(?:in|after)\s+(\d+)\s*(hours?|hr|h|minutes?|mins?|m|seconds?|secs?|sec|s)\b", t)
-    return int(m.group(1)) * UNITS[m.group(2)] if m else 0
+    """Seconds in 'in 1 hour 30 minutes' / 'after 1.5 h' / 'in 10' (bare number = minutes)."""
+    m = re.search(r"\b(?:in|after)\s+(.+)", t)
+    if not m:
+        return 0
+    parts = re.findall(r"(\d+(?:\.\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b", m.group(1))
+    if parts:
+        return int(sum(float(n) * UNITS[u if u in UNITS else u.rstrip("s")] for n, u in parts))
+    bare = re.match(r"(\d+(?:\.\d+)?)\s*$", m.group(1))
+    return int(float(bare.group(1)) * 60) if bare else 0
 
 
 def parse_rules(text):
@@ -45,13 +52,16 @@ def parse_rules(text):
     t = re.sub(r"^(hey |ok |okay )?(jarvis|computer)\s*", "", t).strip()
     if not t:
         return None
-    if re.search(r"\b(cancel|abort|stop)\b.*\b(shut ?down|sleep|timer)\b", t):
+    # Power commands only as a whole request: "remind me to sleep at 11", "put on sleep music" and
+    # "don't shut down" are not power commands (Gemini reads those).
+    pc, when = r"(?: the| my)?(?: (?:pc|computer|laptop|system))?", r"(?: (?:in|after) .+)?"
+    if re.fullmatch(r"(?:cancel|abort|stop)(?: the)? (?:shut ?down|sleep|timer|sleep timer|shut ?down timer)", t):
         return Command(action="power", power="cancel")
-    if re.fullmatch(r"lock( the)?( (pc|computer|screen|it))?", t):
+    if re.fullmatch(r"lock" + pc + r"( (screen|it))?", t):
         return Command(action="power", power="lock")
-    if re.search(r"\bshut ?(down|off)\b|\bturn off( the)? (pc|computer)\b", t):
+    if re.fullmatch(r"(?:shut ?(?:down|off)" + pc + r"|(?:turn|power) off(?: the| my)? (?:pc|computer|laptop|system))" + when, t):
         return Command(action="power", power="shutdown", delay_s=_delay(t))
-    if re.search(r"\b(go to sleep|sleep)\b", t) and not t.startswith("play"):
+    if re.fullmatch(r"(?:go to sleep|sleep" + pc + r"|(?:put|send)" + pc + r" to sleep)" + when, t):
         return Command(action="power", power="sleep", delay_s=_delay(t))
     if re.search(r"\b(volume up|louder|turn (it |the volume )?up|(increase|raise)( the)? volume)\b", t):
         return Command(action="media", media="volume_up")
@@ -59,7 +69,7 @@ def parse_rules(text):
         return Command(action="media", media="volume_down")
     if re.fullmatch(r"(un)?mute( (it|sound|audio|the pc))?", t):
         return Command(action="media", media="mute")
-    if re.fullmatch(r"(next|skip)( (song|track|video|one))?", t):
+    if re.fullmatch(r"(?:play )?(?:the )?next( (song|track|video|one))?|skip( (this|the))?( (song|track|video|one))?", t):
         return Command(action="media", media="next")
     if re.fullmatch(r"(previous|prev|back|go back|last)( (song|track|video|one))?", t):
         return Command(action="media", media="prev")
@@ -69,7 +79,7 @@ def parse_rules(text):
         if re.search(r"\b(download|save|get)\b", t):
             fmt = "mp3" if re.search(r"\b(mp3|audio|song)\b", t) else "mp4"
             return Command(action="ytdl", query=m.group(1), format=fmt)
-    if re.fullmatch(r"(what('s| is) the )?time( is it)?( now)?|what time is it( now)?", t):
+    if re.fullmatch(r"(what( s| is) the )?time( is it)?( now)?|what time is it( now)?", t):  # ' became a space
         from datetime import datetime
         return Command(action="none", say=datetime.now().strftime("It's %I:%M %p.").replace(" 0", " "))
     if m := re.fullmatch(r"(?:uninstall|remove|delete)\s+(.+?)(?:\s+from (?:my |the )?(?:pc|computer|laptop))?", t):
@@ -82,7 +92,11 @@ def parse_rules(text):
         return Command(action="open_app", query=m.group(1))
     if m := re.fullmatch(r"(?:play|put on)\s+(.+?)(?:\s+(?:on|from) youtube)?", t):
         return Command(action="play_yt", query=m.group(1))
-    if m := re.search(r"\b(?:switch|change|swap)\b.*?\bto\s+(?:the\s+|my\s+)?(.+)", t):
+    # Audio output only when it's clearly about sound: "switch to dark mode" / "change the song to X" aren't.
+    if (m := re.search(r"\b(?:switch|change|swap|set)\b.*?\bto\s+(?:the\s+|my\s+)?(.+)", t)) and (
+            re.search(r"\b(audio|sound|output)\b", t) or re.search(
+                r"\b(head ?phones?|headset|ear ?phones?|ear ?buds|buds|airpods|speakers?|tv|monitor|bluetooth|hdmi)\b",
+                m.group(1))):
         return Command(action="audio_device", query=m.group(1))
     return None
 
@@ -92,7 +106,8 @@ PROMPT = """You turn a spoken request into one command for a Windows PC. Reply w
 "query": "...", "power": "lock|sleep|shutdown|cancel", "delay_s": 0, "format": "mp4|mp3", "say": "..."}}
 - media: playback/volume keys.
 - play_yt: query = what to search and play on YouTube.
-- open_app: query = name of an installed PC app or game to launch (e.g. "Riot Client", "Discord").
+- open_app: query = name of an installed PC app or game to launch (e.g. "Riot Client", "Discord"), or a website
+  ("youtube", "gmail", or a URL). Use the app's usual short name ("Word", not "Microsoft Word document").
 - close_app: query = name of a running app to close.
 - uninstall_app: query = name of an installed program to uninstall (opens its uninstaller for confirmation).
 - audio_device: query = output device hint, e.g. "headphones" or "speakers".
@@ -105,6 +120,14 @@ Request: {text}"""
 
 def interpret(text):
     cmd = parse_rules(text)
+    # A rule saw "open/start X" or "remove/delete X", but X isn't an app or program: let Gemini read it
+    # ("start the music", "run a virus scan", "delete this file", "remove milk from the shopping list").
+    from .osctl import installed_apps, installed_programs, match_app, site_url
+    if cmd and cmd.action == "open_app" and not (match_app(cmd.query, installed_apps()) or site_url(cmd.query)):
+        cmd = None
+    if (cmd and cmd.action == "uninstall_app" and not text.lower().lstrip().startswith("uninstall")
+            and not match_app(cmd.query, installed_programs())):
+        cmd = None
     if cmd:
         return cmd
     from google.genai import types
@@ -121,7 +144,10 @@ def interpret(text):
     data = json.loads(resp.text)
     if isinstance(data, list):  # occasionally wrapped in a list
         data = data[0] if data else {}
-    return Command.model_validate({k: v for k, v in data.items() if v is not None})  # unused fields come back null
+    try:  # unused fields come back null or "" (both mean "not set")
+        return Command.model_validate({k: v for k, v in data.items() if v not in (None, "")})
+    except ValueError:  # pydantic ValidationError: a value outside the allowed choices
+        return Command(action="none", say="Sorry, I didn't understand that. Try rephrasing?")
 
 
 def transcribe_bytes(data, suffix=".webm"):
@@ -250,7 +276,24 @@ def _self_check():
     assert r("open riot client") == ("open_app", "riot client", 0)
     assert r("launch valorant") == ("open_app", "valorant", 0)
     assert r("open lofi beats on youtube") == ("play_yt", "lofi beats", 0)
-    from .osctl import match_app
+    # Power words inside other requests are not power commands; delays add up
+    for not_power in ("put on sleep music", "remind me to sleep at 11pm", "don't shut down", "do not sleep",
+                      "remind me to shut down the pc at 5", "how much sleep do i need", "turn off the lights"):
+        assert (r(not_power) or ("",))[0] != "power", not_power
+    assert r("sleep in 1 hour 30 minutes") == ("power", "sleep", 5400)
+    assert r("go to sleep in 1.5 hours") == ("power", "sleep", 5400)
+    assert r("shut down in 10") == ("power", "shutdown", 600)
+    assert r("put the pc to sleep") == ("power", "sleep", 0)
+    assert r("turn off the computer") == ("power", "shutdown", 0)
+    assert r("lock my pc") == ("power", "lock", 0)
+    assert r("play next song") == ("media", "next", 0) and r("skip this song") == ("media", "next", 0)
+    assert r("what's the time")[0] == "none"
+    for not_audio in ("switch to dark mode", "change the song to despacito", "swap to tab 2"):
+        assert r(not_audio) is None, not_audio
+    assert r("switch the audio to my monitor") == ("audio_device", "monitor", 0)
+    from .osctl import match_app, site_url
+    assert site_url("youtube") == "https://www.youtube.com" and site_url("the github.com") == "https://github.com"
+    assert site_url("https://x.com/a") == "https://x.com/a" and site_url("a virus scan") is None and site_url("word") is None
     apps = [{"Name": "Riot Client", "AppID": "riot"}, {"Name": "VALORANT", "AppID": "val"},
             {"Name": "VLC media player", "AppID": "vlc"}, {"Name": "VLC media player skinned", "AppID": "vlc2"},
             {"Name": "Uninstall Discord", "AppID": "x"}, {"Name": "Discord", "AppID": "dc"}]
@@ -280,12 +323,15 @@ def _self_check():
     procs = [{"Id": 1, "ProcessName": "Riot Client", "Description": "Riot Client", "Path": r"F:\Riot Games\Riot Client\RiotClientElectron\Riot Client.exe"},
              {"Id": 2, "ProcessName": "RiotClientServices", "Description": "Riot Client", "Path": r"F:\Riot Games\Riot Client\RiotClientServices.exe"},
              {"Id": 3, "ProcessName": "vgtray", "Description": "Vanguard Tray", "Path": r"C:\Program Files\Riot Vanguard\vgtray.exe"},
-             {"Id": 4, "ProcessName": "Discord", "Description": "Discord", "Path": r"C:\Users\x\AppData\Local\Discord\app-1\Discord.exe"},
-             {"Id": 5, "ProcessName": "explorer", "Description": "Windows Explorer", "Path": r"C:\Windows\explorer.exe"}]
+             {"Id": 4, "ProcessName": "Discord", "Description": "Discord", "Path": r"C:\Users\x\AppData\Local\Discord\app-1\Discord.exe", "Win": 77},
+             {"Id": 6, "ProcessName": "Discord", "Description": "Discord", "Path": r"C:\Users\x\AppData\Local\Discord\app-1\Discord.exe"},
+             {"Id": 7, "ProcessName": "GameInputRedistService", "Description": "GameInput", "Path": r"C:\Program Files\GameInput\svc.exe"},
+             {"Id": 5, "ProcessName": "explorer", "Description": "Windows Explorer", "Path": r"C:\Windows\explorer.exe", "Win": 9}]
+    assert select_targets("the game", apps_real, procs)[1] == []          # windowless services never match by name
     label, t = select_targets("riot client", apps_real, procs)
     assert label == "Riot Client" and sorted(p["Id"] for p in t) == [1, 2], (label, t)  # not Vanguard
     label, t = select_targets("discord", apps_real, procs)
-    assert [p["Id"] for p in t] == [4], t                       # Store-style AppID: matched by description
+    assert [p["Id"] for p in t] == [4, 6], t                    # by description: the window plus its helper
     assert select_targets("windows explorer", apps_real, procs)[1] == []   # never Windows processes
     assert select_targets("photoshop", apps_real, procs)[1] == []
     c = parse_rules("download https://www.youtube.com/watch?v=abc as mp3")

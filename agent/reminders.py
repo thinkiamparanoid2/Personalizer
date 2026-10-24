@@ -46,11 +46,17 @@ def _update(fn):
 
 def sync(data):
     """Planner snapshot from the web app: {academic: [{type,title,date}], shopping_pending, name, app_url}."""
+    events = data.get("academic")
+    try:
+        pending = int(data.get("shopping_pending") or 0)
+    except (TypeError, ValueError):
+        pending = 0
+
     def apply(state):
         state["data"] = {
-            "academic": [{k: e.get(k) for k in ("type", "title", "date")} for e in data.get("academic", [])
-                         if e.get("date") and e.get("title")][:500],
-            "shopping_pending": int(data.get("shopping_pending") or 0),
+            "academic": [{k: e.get(k) for k in ("type", "title", "date")} for e in (events if isinstance(events, list) else [])
+                         if isinstance(e, dict) and e.get("date") and e.get("title")][:500],
+            "shopping_pending": pending,
             "name": str(data.get("name") or "")[:40],
             "app_url": str(data.get("app_url") or "")[:200],
             "synced": time.time(),

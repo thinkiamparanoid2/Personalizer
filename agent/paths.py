@@ -14,7 +14,10 @@ def resolve_allowed(path, roots=None):
     p = Path(path)
     if not p.is_absolute():  # also rejects drive-relative "C:foo" and "\foo"
         raise PermissionError("absolute path required")
-    real = p.resolve(strict=True)  # FileNotFoundError if missing
+    try:
+        real = p.resolve(strict=True)  # FileNotFoundError if missing
+    except (OSError, ValueError) as e:  # null byte, "a<b" and other names Windows can't have: same as missing
+        raise FileNotFoundError(f"Not found: {path}") from e
     for root in roots:
         try:
             root_real = Path(root).resolve(strict=True)

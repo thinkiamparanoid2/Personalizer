@@ -20,13 +20,27 @@ STATE_PATH = Path(__file__).with_name("state.json")
 
 
 def _open_image(path):
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageOps, UnidentifiedImageError
     try:
         import pillow_heif
         pillow_heif.register_heif_opener()
     except ImportError:
         pass
-    return ImageOps.exif_transpose(Image.open(path))
+    try:
+        return ImageOps.exif_transpose(Image.open(path))
+    except UnidentifiedImageError:  # ValueError -> 400 with this message instead of a bare 500
+        raise ValueError(f"'{Path(path).name}' isn't a PDF or an image this can read") from None
+
+
+def _read_pdf(path):
+    from pypdf import PdfReader
+    from pypdf.errors import PyPdfError
+    try:
+        reader = PdfReader(path)
+        len(reader.pages)  # parse now, so a broken file fails here with a clear message
+        return reader
+    except PyPdfError:
+        raise ValueError(f"'{Path(path).name}' isn't a valid PDF (damaged or not really a PDF)") from None
 
 
 # ---------- 1.2 YouTube / social video download ----------
@@ -282,7 +296,7 @@ def pdf_merge(paths, out_dir=None):
     writer = PdfWriter()
     for p in paths:
         if p.suffix.lower() == ".pdf":
-            writer.append(str(p))
+            writer.append(_read_pdf(p))
         else:
             buf = io.BytesIO()
             _open_image(p).convert("RGB").save(buf, "PDF", resolution=150)
@@ -312,10 +326,10 @@ def _compress_image(path, target):
 
 
 def _compress_pdf(path, target):
-    from pypdf import PdfReader, PdfWriter
+    from pypdf import PdfWriter
     best = None
     for quality, scale in ((80, 1), (60, 1), (45, 0.75), (35, 0.5), (25, 0.35)):
-        writer = PdfWriter(clone_from=PdfReader(path))
+        writer = PdfWriter(clone_from=_read_pdf(path))
         for page in writer.pages:
             for img in page.images:
                 try:
@@ -360,7 +374,7 @@ def pdf_stamp(path, signature_png=None, page_index=-1):
     if not sig_path or not Path(sig_path).exists():
         raise FileNotFoundError("Set signature_png in agent/config.json (a transparent PNG)")
     path = Path(path)
-    writer = PdfWriter(clone_from=PdfReader(path))
+    writer = PdfWriter(clone_from=_read_pdf(path))
     page = writer.pages[page_index]
     box = page.mediabox
     left, bottom, width, height = float(box.left), float(box.bottom), float(box.width), float(box.height)
