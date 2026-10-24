@@ -173,7 +173,9 @@ function chip(tool, result) {
     download_video: result.started && 'Download started',
     make_study_notes: result.started && 'Study notes started',
     set_reminder: result.reminder && `Reminder: ${result.reminder.text} · ${new Date(result.reminder.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
-    cancel_reminder: result.cancelled && 'Reminder cancelled'
+    cancel_reminder: result.cancelled && 'Reminder cancelled',
+    remember: result.remembered && !result.already_known && `Remembered: ${result.remembered.text}`,
+    forget: result.forgot && `Forgot: ${result.forgot}`
   }[tool];
   return text ? `<span class="action-chip"><i class="fa-solid fa-check"></i> ${esc(text)}</span>` : '';
 }

@@ -150,3 +150,4 @@ agent/state.json
 agent/agent.log
 agent/last_voice.*
 agent/reminders.json
+agent/memory.json

@@ -3,13 +3,15 @@
 PC tools run here in the agent. App-data tools (academic events, shopping, movies, power with a
 confirmation) run in the web app, which owns the Firestore data: when the model calls one, the
 pending calls go back to the browser, which executes them and posts the results.
-Conversations live in memory per session id (lost on restart, which is fine for chat).
+Conversations live in memory per session id (lost on restart, which is fine for chat); lasting facts
+about the user are kept by memory.py and put into every system prompt.
 """
 import time
 import uuid
 
 from google.genai import types
 
+from . import memory
 from .util import gemini_generate
 
 SESSION_TTL = 2 * 3600
@@ -54,6 +56,12 @@ SERVER_TOOLS = [
     _fn("read_study_notes", "Read the full Markdown of the study notes that best match a topic or title, "
                             "to answer questions about a lecture.",
         {"query": {"type": "string", "description": "Lecture title or topic words"}}, ["query"]),
+    _fn("remember", "Save a lasting fact about the user (people, courses, places, routines, preferences) "
+                    "so you know it in future chats. One short self-contained fact per call.",
+        {"fact": {"type": "string", "description": "e.g. 'CSE330 lab is in room 7A', 'Ammu is their mother'"}},
+        ["fact"]),
+    _fn("forget", "Delete a remembered fact by its id (ids are listed under 'What you remember').",
+        {"id": {"type": "string"}}, ["id"]),
 ]
 
 CLIENT_TOOLS = [
@@ -88,12 +96,26 @@ Use the tools to act or to look things up; never invent the user's events, items
 Resolve relative dates ("Thursday", "next week") to YYYY-MM-DD from today's date before calling tools.
 When several things are asked, call several tools. After acting, confirm what you did in plain words.
 You cannot see the encrypted vault or saved passwords; say so if asked.
-For general questions, answer from your own knowledge."""
+For general questions, answer from your own knowledge.
+
+Memory: when the user tells you something lasting about themselves, their people, courses, places,
+routines or preferences (or says "remember ..."), call remember without asking, then mention it briefly.
+Don't remember one-off requests or things already in the planner, shopping list or reminders.
+If a fact changes, forget the old id and remember the new one; "forget ..." means call forget.
+Never remember passwords, PINs, OTPs, card, bank or ID numbers: those belong in the encrypted vault.
+Use what you remember naturally; don't recite it unless asked.
+
+What you remember about {name}:
+{memory}"""
 
 
 def _run_server_tool(name, args):
     from . import command, jobs, media, notes, osctl, reminders, tools
     try:
+        if name == "remember":
+            return memory.remember(args["fact"])
+        if name == "forget":
+            return memory.forget(args["id"])
         if name in ("media_control", "set_audio_output"):
             import comtypes
             comtypes.CoInitialize()  # pycaw needs COM on this worker thread
@@ -169,7 +191,7 @@ def step(sid, message=None, tool_results=None, context=None):
     ctx = context or {}
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM.format(name=ctx.get("name") or "the user", now=ctx.get("now") or time.ctime(),
-                                         tz=ctx.get("tz") or "local"),
+                                         tz=ctx.get("tz") or "local", memory=memory.prompt_block()),
         tools=[types.Tool(function_declarations=SERVER_TOOLS + CLIENT_TOOLS)],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         thinking_config=types.ThinkingConfig(thinking_level="LOW"))  # snappier replies for chat
