@@ -824,3 +824,13 @@ h1, h2, h3, .section-title, .brand { font-family: 'Space Grotesk', 'Inter', sans
   .search-container { display: none; }   /* search per tab is rarely needed on a phone; keeps the header clean */
   .mobile-brand { flex: 1; }
 }
+
+/* Toast action button, field errors, in-app confirm sheet */
+.toast { display: flex; align-items: center; justify-content: center; gap: 14px; max-width: min(92vw, 480px); }
+.toast button { background: none; border: none; color: var(--maroon); font: inherit; font-weight: 700; cursor: pointer; padding: 4px 6px; }
+.toast.error { border-color: #d32f2f; }
+.invalid { border-color: #d32f2f !important; }
+.confirm-text { white-space: pre-line; overflow-wrap: anywhere; color: var(--text-dark); line-height: 1.5; margin-bottom: 1.5rem; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.ghost-btn { background: none; border: 1px solid var(--input-border); color: var(--text-dark); border-radius: 12px; padding: 0.6rem 1.2rem; font-weight: 600; cursor: pointer; }
+.add-btn.danger, .add-btn.danger:hover { background: #d32f2f; color: #fff; box-shadow: none; }

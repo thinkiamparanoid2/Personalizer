@@ -89,7 +89,8 @@ async function renderReminders() {
 }
 
 async function cancelReminder(id) {
-  await api('/api/reminders/cancel', { method: 'POST', json: { id } });
+  try { await api('/api/reminders/cancel', { method: 'POST', json: { id } }); }
+  catch (e) { return window.showToast?.(e.message, { error: true }); }
   renderReminders();
 }
 
@@ -98,7 +99,7 @@ async function briefMe() {
     const r = await api('/api/brief/send', { method: 'POST' });
     openDrawer();
     addMsg('farvis', `<b>${esc(r.title)}</b><br>${esc(r.body).replace(/\n/g, '<br>')}`);
-  } catch (e) { window.showToast?.(e.message); }
+  } catch (e) { window.showToast?.(e.message, { error: true }); }
 }
 
 async function renderWeather() {
@@ -190,15 +191,19 @@ async function runClientTool(call) {
   const args = call.args || {};
   if (call.name === 'power_action') {
     const delay = Math.max(0, args.delay_minutes || 0);
+    const verb = args.action === 'sleep' ? 'Sleep' : 'Shut down';
     if (['sleep', 'shutdown'].includes(args.action) &&
-        !confirm(`${args.action === 'sleep' ? 'Sleep' : 'Shut down'} the PC${delay ? ` in ${delay} min` : ' now'}?`)) {
+        !await window.askConfirm(`${verb} the PC${delay ? ` in ${delay} min` : ' now'}?`,
+          { ok: verb, danger: args.action === 'shutdown' })) {
       return { cancelled_by_user: true };
     }
     await api('/api/power', { method: 'POST', json: { action: args.action, delay_s: delay * 60 } });
     return { ok: true, done: `${args.action}${delay ? ` in ${delay} min` : ''}` };
   }
   if (call.name === 'uninstall_app') {
-    if (!confirm(`Uninstall ${args.name} from your PC?`)) return { cancelled_by_user: true };
+    if (!await window.askConfirm(`Uninstall ${args.name} from your PC?`, { ok: 'Uninstall', danger: true })) {
+      return { cancelled_by_user: true };
+    }
     const r = await api('/api/command', { method: 'POST',
       json: { command: { action: 'uninstall_app', query: args.name }, confirmed: true } });
     return { ok: true, done: r.did };
@@ -238,7 +243,7 @@ async function ask(text) {
     if ((r.actions || []).some(a => /reminder/.test(a.tool))) renderReminders();
     bubble.innerHTML = md(r.reply || 'Done.') + (chips ? `<div class="chips">${chips}</div>` : '');
   } catch (e) {
-    bubble.textContent = /Failed to fetch|NetworkError/i.test(e.message) ? 'Your PC agent seems offline.'
+    bubble.textContent = e.offline ? "I can't reach your PC right now. It may be asleep, or the agent isn't running."
       : /quota/i.test(e.message) ? "Gemini's free daily quota is used up (it resets around 1 PM). Direct commands in PC Control still work."
       : /Gemini/i.test(e.message) ? 'Gemini is busy right now. Try again in a moment.' : e.message;
   } finally {
@@ -287,7 +292,7 @@ async function voice(btn) {
     try {
       const { text } = await api('/api/transcribe', { method: 'POST', form });
       text ? ask(text) : window.showToast?.("Didn't catch that");
-    } catch (e) { window.showToast?.(e.message); }
+    } catch (e) { window.showToast?.(e.message, { error: true }); }
   };
   recorder.start();
   document.querySelectorAll('.mic-btn').forEach(b => b.classList.add('recording'));
@@ -297,7 +302,6 @@ async function voice(btn) {
 
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); toggleDrawer(); }
-  if (e.key === 'Escape' && $('farvis-drawer').classList.contains('open')) closeDrawer();
 });
 
 Object.assign(window, {

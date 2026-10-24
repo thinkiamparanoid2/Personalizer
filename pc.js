@@ -1,7 +1,7 @@
 // PC Control tab: talks to the local Python agent (agent/) over Tailscale HTTPS with a Bearer token.
 // ponytail: token lives in localStorage on this device; move it into the encrypted vault if the phone is shared.
 const $ = id => document.getElementById(id);
-const toast = msg => window.showToast && window.showToast(msg);
+const toast = (msg, opts) => window.showToast && window.showToast(msg, opts);
 const escapeHTML = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtSize = n => n == null ? '' : n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(0)} KB`
@@ -20,24 +20,36 @@ async function api(path, { method = 'GET', json, form, raw } = {}) {
   const { url, token } = agent();
   if (!url || !token) {
     toggleModal('agent-settings-modal', true);
-    throw new Error('Set the agent URL and token first.');
+    throw new Error('Connect your PC first: enter the agent URL and token.');
   }
   const headers = { Authorization: `Bearer ${token}` };
   let body;
   if (json) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
   else if (form) body = form;
-  const res = await fetch(url + path, { method, headers, body });
+  let res;
+  try { res = await fetch(url + path, { method, headers, body }); }
+  catch {  // nothing answered (PC asleep, agent stopped, Tailscale off)
+    throw Object.assign(new Error("Can't reach your PC. It may be asleep, or the agent isn't running."), { offline: true });
+  }
   if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).detail || msg; } catch {}
-    throw new Error(`${res.status}: ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`);
+    let detail = '';
+    try { detail = (await res.json()).detail || ''; } catch {}
+    const msg = res.status === 401 ? 'The PC rejected the token. Paste it again in PC Control → Agent.'
+      : typeof detail === 'string' && detail ? detail
+      : res.status === 422 ? "The PC didn't understand that request."
+      : 'Something went wrong on the PC. Try again.';
+    throw Object.assign(new Error(msg), { status: res.status });
   }
   return raw ? res : res.json();
 }
 
-// Wrap UI handlers: show errors instead of failing silently.
-const ui = fn => async (...args) => {
-  try { return await fn(...args); } catch (e) { alert(e.message); }
+// Wrap UI handlers: errors become a toast; "PC unreachable" gets a Retry button.
+const ui = fn => {
+  const run = async (...args) => {
+    try { return await fn(...args); }
+    catch (e) { toast(e.message, { error: true, ...(e.offline && { action: 'Retry', onAction: () => run(...args) }) }); }
+  };
+  return run;
 };
 
 function setStatus(ok) {
@@ -57,10 +69,9 @@ async function pcInit() {
     setStatus(true);
   } catch (e) {
     setStatus(false);
-    // fetch() throws TypeError when nothing answers; HTTP errors carry the status code.
-    lastAgentError = e instanceof TypeError
-      ? 'Agent not reachable: is it running? (Brave may also need "local network/localhost access" allowed for this site.)'
-      : e.message.startsWith('401') ? 'Wrong token: paste the "token" value from agent/config.json (without quotes).'
+    lastAgentError = e.offline
+      ? `${e.message} (Brave may also need "local network/localhost access" allowed for this site.)`
+      : e.status === 401 ? 'Wrong token: paste the "token" value from agent/config.json (without quotes).'
       : e.message;
     return;
   }
@@ -78,12 +89,12 @@ async function pcSaveSettings() {
     // Tolerate pasting the whole JSON line: "token": "abc...",
     const token = $('agent-token').value.trim().replace(/^"?token"?\s*:\s*/, '').replace(/^["']|["'],?$/g, '');
     localStorage.setItem('agentToken', token);
-  } catch { return alert('Could not save settings in this browser.'); }
+  } catch { return toast("This browser won't save settings (private mode?).", { error: true }); }
   toggleModal('agent-settings-modal', false);
   initialized = false;
   await pcInit();
   if (document.querySelector('#pc-status.ok')) toast('Agent connected!');
-  else alert(lastAgentError);
+  else toast(lastAgentError, { error: true, duration: 8000 });
 }
 
 // ---------- Remote ----------
@@ -112,8 +123,9 @@ const pcSetAudio = ui(async id => {
 
 const pcPower = ui(async action => {
   const delay_s = Math.max(0, +$('pc-power-min').value || 0) * 60;
-  if (action === 'shutdown' && !confirm(`Shut down the PC${delay_s ? ` in ${delay_s / 60} min` : ' now'}?`)) return;
-  if (action === 'sleep' && !delay_s && !confirm('Put the PC to sleep now?')) return;
+  if (action === 'shutdown' && !await window.askConfirm(`Shut down the PC${delay_s ? ` in ${delay_s / 60} min` : ' now'}?`,
+    { ok: 'Shut down', danger: true })) return;
+  if (action === 'sleep' && !delay_s && !await window.askConfirm('Put the PC to sleep now?', { ok: 'Sleep' })) return;
   await api('/api/power', { method: 'POST', json: { action, delay_s } });
   toast(action === 'cancel' ? 'Timers cancelled' : `${action}${delay_s ? ` in ${delay_s / 60} min` : ''}`);
 });
@@ -123,7 +135,7 @@ async function showCommandResult(r) {
   const out = $('pc-cmd-out');
   const heard = r.heard ? `"${r.heard}" \u2192 ` : '';
   if (r.confirm) {
-    if (!confirm(r.confirm)) { out.textContent = `${heard}cancelled`; return; }
+    if (!await window.askConfirm(r.confirm, { ok: 'Yes, do it', danger: true })) { out.textContent = `${heard}cancelled`; return; }
     r = { heard: r.heard, ...(await api('/api/command', { method: 'POST', json: { command: r.command, confirmed: true } })) };
   }
   out.textContent = `${heard}${r.did}`;
@@ -172,7 +184,7 @@ const pcSendClip = ui(async () => {
 
 const pcSendClipImage = ui(async () => {
   const file = $('pc-clip-img').files[0];
-  if (!file) return alert('Pick an image first.');
+  if (!file) return $('pc-clip-img').click();  // nothing picked yet: open the picker instead of complaining
   const form = new FormData();
   form.append('image', file);
   await api('/api/clipboard/image', { method: 'POST', form });
@@ -182,7 +194,7 @@ const pcSendClipImage = ui(async () => {
 // ---------- AirDrop ----------
 const pcUpload = ui(async () => {
   const input = $('pc-drop-files');
-  if (!input.files.length) return alert('Pick files first.');
+  if (!input.files.length) return input.click();
   const form = new FormData();
   for (const f of input.files) form.append('items', f);
   toast(`Sending ${input.files.length} file(s)...`);
@@ -303,7 +315,7 @@ const pcShare = ui(async entry => {
   toast('Creating public link...');
   const r = await api('/api/share', { method: 'POST', json: { path: entry.path } });
   try { await navigator.clipboard.writeText(r.url); toast('Public link copied!'); }
-  catch { prompt('Public link (valid for one download):', r.url); }
+  catch { window.askConfirm(`Public link (valid for one download):\n\n${r.url}`, { ok: 'Done', cancel: null }); }
 });
 
 // ---------- Files ----------
@@ -363,11 +375,14 @@ const pcPdf = ui(async kind => {
   const form = new FormData();
   if (kind === 'merge') {
     const files = $('pc-pdf-merge').files;
-    if (files.length < 2) return alert('Pick at least 2 files.');
+    if (files.length < 2) {
+      if (files.length) toast('Pick at least 2 files to merge.', { error: true });
+      return $('pc-pdf-merge').click();
+    }
     for (const f of files) form.append('items', f);
   } else {
     const file = $(`pc-pdf-${kind}`).files[0];
-    if (!file) return alert('Pick a file first.');
+    if (!file) return $(`pc-pdf-${kind}`).click();
     form.append('item', file);
     if (kind === 'compress') form.append('target_kb', $('pc-pdf-target').value);
   }
@@ -404,7 +419,8 @@ function pcConvertPick() {
 const pcConvert = ui(async () => {
   const file = $('pc-convert-file').files[0];
   const target = $('pc-convert-target').value;
-  if (!file || !target) return alert('Pick a file and a target format.');
+  if (!file) return $('pc-convert-file').click();
+  if (!target) return toast("That file type can't be converted here.", { error: true });
   const form = new FormData();
   form.append('item', file);
   form.append('target', target);

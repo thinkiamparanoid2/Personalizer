@@ -39,25 +39,37 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Network-first for the app's own files and CDN libraries (fresh after every deploy, cached for offline).
+// Stale-while-revalidate for the app's own files and CDN libraries: the cached copy answers instantly
+// (no waiting on a slow network), the network refreshes the cache in the background, and open pages are
+// told when one of our own files changed so they can offer a reload.
 // Everything else (Firebase APIs, the PC agent, OMDB) goes straight to the network and is never cached.
 const CACHEABLE_HOSTS = ['cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  const cacheable = event.request.method === 'GET' &&
-    (url.origin === self.location.origin || CACHEABLE_HOSTS.includes(url.hostname));
-  if (!cacheable) return;
+const version = res => res && (res.headers.get('ETag') || res.headers.get('Last-Modified'));
 
-  event.respondWith(
-    fetch(event.request).then(response => {
-      if (response.ok) {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+async function notifyUpdated() {
+  for (const client of await self.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'app-updated' });
+}
+
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  const url = new URL(req.url);
+  const own = url.origin === self.location.origin;
+  if (req.method !== 'GET' || !(own || CACHEABLE_HOSTS.includes(url.hostname))) return;
+  // Navigations like /?addMovie=... share one cached shell.
+  const key = req.mode === 'navigate' ? new Request(url.origin + url.pathname) : req;
+
+  event.respondWith(caches.open(CACHE_NAME).then(async cache => {
+    const cached = await cache.match(key);
+    const refresh = fetch(req).then(async res => {
+      if (res.ok) {
+        await cache.put(key, res.clone());
+        if (own && cached && version(res) && version(res) !== version(cached)) await notifyUpdated();
       }
-      return response;
-    }).catch(() =>
-      // Offline: navigations like /?addMovie=... still get the cached shell.
-      caches.match(event.request, { ignoreSearch: event.request.mode === 'navigate' }))
-  );
+      return res;
+    });
+    if (!cached) return refresh;
+    event.waitUntil(refresh.catch(() => {}));  // offline: the cached copy is all we need
+    return cached;
+  }));
 });

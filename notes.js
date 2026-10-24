@@ -115,8 +115,10 @@ function notesAsk() {
 
 async function notesReveal() {
   try { await api('/api/reveal', { method: 'POST', json: { path: current.path } }); window.showToast?.('Opened in Explorer'); }
-  catch (e) { alert(e.message); }
+  catch (e) { fail(e); }
 }
+
+const fail = e => window.showToast?.(e.message, { error: true });
 
 function notesDownload() {
   const a = document.createElement('a');
@@ -127,24 +129,25 @@ function notesDownload() {
 }
 
 async function notesDelete() {
-  if (!confirm(`Move "${current.title}" to the Recycle Bin?`)) return;
+  // Kept as a question: the Recycle Bin is on the PC, so there's no undo from the phone.
+  if (!await window.askConfirm(`Move "${current.title}" to the Recycle Bin on the PC?`, { ok: 'Move', danger: true })) return;
   try {
     await api('/api/notes/delete', { method: 'POST', json: { id: current.id } });
     current = null;
     window.showToast?.('Moved to the Recycle Bin');
     loadList();
-  } catch (e) { alert(e.message); }
+  } catch (e) { fail(e); }
 }
 
 async function notesGenerate() {
   const url = $('notes-url').value.trim();
-  if (!url) return;
-  if (!agentReady()) return alert('Connect the PC agent first (PC Control → Agent).');
+  if (!url) return $('notes-url').focus();
+  if (!agentReady()) return window.showToast?.('Connect your PC first: PC Control → Agent.', { error: true });
   try {
     const job = await api('/api/notes', { method: 'POST', json: { url } });
     $('notes-url').value = '';
     watchJob(job.id);
-  } catch (e) { alert(e.message); }
+  } catch (e) { fail(e); }
 }
 
 async function watchJob(id) {

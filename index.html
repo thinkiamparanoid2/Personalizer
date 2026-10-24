@@ -519,7 +519,17 @@
     </form>
   </aside>
 
-  <div id="toast" class="toast">Action successful!</div>
+  <div id="confirm-modal" class="modal-overlay">
+    <div class="modal-content" style="width:380px;">
+      <p id="confirm-text" class="confirm-text"></p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="ghost-btn" onclick="settleConfirm(false)">Cancel</button>
+        <button id="confirm-ok" class="add-btn" onclick="settleConfirm(true)">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="script.js"></script>
   <script type="module" src="pc.js"></script>
