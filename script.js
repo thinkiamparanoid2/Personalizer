@@ -125,7 +125,7 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('main-dashboard').style.display = 'flex';
   document.getElementById('verify-banner').style.display = user.emailVerified ? 'none' : 'flex';
-  await migrateLegacyOwners(user);
+  migrateLegacyOwners(user);  // not awaited: the listeners pick up re-stamped docs as they land
   startListeners();
   restoreLastTab();
   importMovieFromUrl();
@@ -232,8 +232,11 @@ function showAuthScreen() {
 }
 
 // Docs written before Firebase Auth have owner = email; re-stamp them with the uid.
+// Nothing writes email owners any more, so after one complete pass this device never queries again.
 async function migrateLegacyOwners(user) {
   if (!user.email || !user.emailVerified) return;
+  const doneKey = `legacyMigrated_${user.uid}`;
+  try { if (localStorage.getItem(doneKey)) return; } catch {}
   try {
     for (const name of OWNED_COLLECTIONS) {
       const snap = await getDocs(query(collection(db, name), where("owner", "==", user.email)));
@@ -243,6 +246,7 @@ async function migrateLegacyOwners(user) {
       snap.forEach(d => batch.update(d.ref, { owner: user.uid }));
       await batch.commit();
     }
+    try { localStorage.setItem(doneKey, '1'); } catch {}
   } catch (e) { console.warn('Legacy owner migration skipped:', e.code || e); }
 }
 
